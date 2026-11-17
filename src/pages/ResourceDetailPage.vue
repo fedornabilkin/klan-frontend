@@ -1,0 +1,294 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { NButton, NSkeleton } from 'naive-ui';
+import type { Entity, Resource, User } from '@shared/contracts';
+import { userPath } from '@shared/user-links';
+import type { IdentitySavedField } from '@/domain/profile-identity';
+import { communityService } from '@/services/community';
+import { api } from '@/services/api';
+import { useAuthStore } from '@/stores/auth';
+import { useRealtime } from '@/composables/useRealtime';
+import Avatar from '@/components/ui/Avatar.vue';
+import Icon from '@/components/ui/Icon.vue';
+import StatusBadge from '@/components/ui/StatusBadge.vue';
+import ProfileTextEditor from '@/components/features/ProfileTextEditor.vue';
+import ProfileIdentityEditor from '@/components/features/ProfileIdentityEditor.vue';
+import ProfileLocationEditor from '@/components/features/ProfileLocationEditor.vue';
+import ProfileTagsSection from '@/components/features/ProfileTagsSection.vue';
+import ProfileEntriesSection from '@/components/features/ProfileEntriesSection.vue';
+import EntityEditorModal from '@/components/features/EntityEditorModal.vue';
+import EventItemsModal from '@/components/features/EventItemsModal.vue';
+import ChallengeJoinModal from '@/components/features/ChallengeJoinModal.vue';
+import ChallengeResultModal from '@/components/features/ChallengeResultModal.vue';
+import ChallengeResultsSection from '@/components/features/ChallengeResultsSection.vue';
+import ReadersModal from '@/components/features/ReadersModal.vue';
+import { categoryLabels, dateLabel, resourceMeta } from '@/components/features/resourceMeta';
+
+const route=useRoute();const auth=useAuthStore();
+const resource=computed(()=>(route.meta.resource||route.path.split('/')[1]) as Resource);const id=computed(()=>String(route.params.id));
+const record=ref<User|Entity|null>(null);const loading=ref(true);const error=ref('');const refreshError=ref('');const actionError=ref('');const busy=ref(false);
+const showEditor=ref(false);const showItems=ref(false);const showJoin=ref(false);const showResult=ref(false);const showReaders=ref(false);
+const user=computed(()=>record.value as User);const entity=computed(()=>record.value as Entity);
+const isOwn=computed(()=>resource.value==='users'&&record.value?.id===auth.user?.id);
+const participant=computed(()=>resource.value==='users'?undefined:entity.value?.participants.find(p=>p.user.id===auth.user?.id));
+const canEdit=computed(()=>auth.can('content.manage')||(resource.value==='feedback'&&entity.value?.author?.id===auth.user?.id));
+const hasRead=computed(()=>entity.value?.readers?.some(u=>u.id===auth.user?.id)||false);
+const ended=computed(()=>entity.value?.status==='archived'||entity.value?.status==='completed'||(entity.value?.schedule?new Date(entity.value.schedule.end).getTime()<Date.now():false));
+const started=computed(()=>!entity.value?.schedule || entity.value.schedule.start.slice(0,10)<=new Date().toISOString().slice(0,10));
+const resultTotal=computed(()=>(entity.value?.results||[]).reduce((sum,r)=>sum+r.value,0));
+const ownTotal=computed(()=>(entity.value?.results||[]).filter(r=>r.user.id===auth.user?.id).reduce((sum,r)=>sum+r.value,0));
+const leaderboard=computed(()=>{const rows=new Map<string,{user:User;total:number;team?:string}>();for(const p of entity.value?.participants||[])rows.set(p.user.id,{user:p.user,total:0,team:p.team?.title});for(const result of entity.value?.results||[]){const row=rows.get(result.user.id)||{user:result.user,total:0,team:result.team?.title};row.total+=result.value;rows.set(result.user.id,row);}return [...rows.values()].sort((a,b)=>b.total-a.total);});
+const teamResults=computed(()=>{const rows=new Map<string,{name:string;total:number}>();for(const p of entity.value?.participants||[])if(p.team&&!rows.has(p.team.id))rows.set(p.team.id,{name:p.team.title,total:0});for(const result of entity.value?.results||[])if(result.team){const row=rows.get(result.team.id)||{name:result.team.title,total:0};row.total+=result.value;rows.set(result.team.id,row);}return [...rows.values()].sort((a,b)=>b.total-a.total);});
+let controller:AbortController|undefined;
+async function load(){
+  controller?.abort();controller=new AbortController();const signal=controller.signal;
+  loading.value=!record.value;error.value='';refreshError.value='';
+  try{
+    const result=await communityService.get(resource.value,id.value,signal);if(signal.aborted)return;record.value=result;
+  }catch(cause){
+    if(!signal.aborted){const message=cause instanceof Error?cause.message:'Не удалось открыть страницу';if(record.value)refreshError.value=message;else error.value=message;}
+  }finally{if(!signal.aborted)loading.value=false;}
+}
+function profileSaved(savedUser:User,field:'bio'|'location'|'tags'|'facts'|'achievements'){
+  const changes={ [field]:savedUser[field] };
+  if(resource.value==='users'&&record.value?.id===savedUser.id){controller?.abort();record.value={...record.value,...changes} as User;loading.value=false;error.value='';refreshError.value='';}
+  if(auth.user?.id===savedUser.id)auth.setUser({...auth.user,...changes});
+}
+function profileIdentitySaved(savedUser:User,fields:IdentitySavedField[]){
+  // Apply only submitted identity fields: another block or a realtime refresh may
+  // already contain newer profile data. Keep session-only demo access and role.
+  const changes=Object.fromEntries(fields.map(field=>[field,savedUser[field]]));
+  if(resource.value==='users'&&record.value?.id===savedUser.id){controller?.abort();record.value={...record.value,...changes} as User;loading.value=false;error.value='';refreshError.value='';}
+  if(auth.user?.id===savedUser.id)auth.setUser({...auth.user,...changes});
+}
+function participantLabel(count:number){
+  const form=count%100>=11&&count%100<=14?2:count%10===1?0:count%10>=2&&count%10<=4?1:2;
+  return `${count} ${['участник','участника','участников'][form]}`;
+}
+async function act(action:()=>Promise<unknown>){if(busy.value)return;busy.value=true;actionError.value='';try{await action();await load();}catch(e){actionError.value=e instanceof Error?e.message:'Не удалось выполнить действие';}finally{busy.value=false;}}
+function join(){if(resource.value==='challenges'){showJoin.value=true;return;}void act(()=>api.post(`/${resource.value}/${id.value}/join`,{}));}
+function leave(){void act(()=>api.delete(`/${resource.value}/${id.value}/join`));}
+function toggleRead(){void act(()=>api.put(`/books/${id.value}/read`,{read:!hasRead.value}));}
+watch([resource,id],()=>{record.value=null;actionError.value='';refreshError.value='';void load();},{immediate:true});
+useRealtime(message=>{if(message.type==='invalidate'&&([resource.value,'*'].includes(message.resource)||(resource.value==='users'&&message.resource==='teams')))void load();});
+onBeforeUnmount(()=>controller?.abort());
+</script>
+
+<template lang="pug">
+.detail-page
+  RouterLink.detail-back(:to="`/${resource}`")
+    Icon(name="arrow-left")
+    | {{ resourceMeta[resource].action }}
+  .detail-refresh-error(v-if="refreshError" role="status")
+    span Не удалось обновить страницу: {{ refreshError }}
+    NButton(size="small" @click="load") Повторить
+  template(v-if="loading")
+    NSkeleton(height="16rem" style="border-radius:1rem;margin-bottom:1rem")
+    NSkeleton(text :repeat="5")
+  .detail-error(v-else-if="error" role="alert")
+    h2 Не удалось загрузить страницу
+    p {{ error }}
+    NButton(@click="load") Повторить
+  template(v-else-if="record && resource === 'users'")
+    .profile-banner
+      .banner-lines
+      span KLAN / ЛЮДИ С ХАРАКТЕРОМ
+    .profile-heading
+      Avatar(:user="user" size="lg")
+      .profile-title
+        .profile-eyebrow
+          span УЧАСТНИК СООБЩЕСТВА
+          span.admin-mark(v-if="user.role === 'admin'") АДМИН
+          RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" title="Ссылка на профиль") ID {{ user.publicId }}
+        ProfileIdentityEditor(:key="`identity-${user.id}`" :user="user" :editable="isOwn" @saved="profileIdentitySaved")
+        ProfileLocationEditor(:key="`location-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'location')")
+    .detail-columns.detail-columns--profile
+      .detail-main
+        section.detail-panel
+          ProfileTextEditor(:key="`bio-${user.id}`" :user="user" field="bio" :editable="isOwn" @saved="profileSaved($event, 'bio')")
+        ProfileTagsSection(:key="`tags-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'tags')")
+        ProfileEntriesSection.detail-panel(v-if="isOwn || user.facts.length" :key="`facts-${user.id}`" :user="user" field="facts" title="Несколько фактов" icon="check" :editable="isOwn" @saved="profileSaved($event, 'facts')")
+        ProfileEntriesSection.detail-panel(v-if="isOwn || user.achievements.length" :key="`achievements-${user.id}`" :user="user" field="achievements" title="Достижения" icon="trophy" :editable="isOwn" @saved="profileSaved($event, 'achievements')")
+        section.detail-panel.profile-teams
+          h2
+            Icon(name="shield-halved")
+            | {{ (user.activeTeams?.length || 0) > 1 ? 'Команды' : 'Команда' }}
+          .profile-team-list(v-if="user.activeTeams?.length")
+            article.profile-team-card(v-for="team in user.activeTeams" :key="team.id")
+              .profile-team-heading
+                RouterLink(:to="`/teams/${team.id}`") {{ team.title }}
+                span {{ participantLabel(team.memberCount) }}
+              p(v-if="team.description") {{ team.description }}
+              p.profile-team-empty(v-else) У команды пока нет описания.
+          p.profile-team-empty(v-else) {{ isOwn ? 'Вы пока не состоите в активной команде.' : 'Пока не состоит в активной команде.' }}
+      aside.detail-side
+        section.detail-panel
+          h2 В движении
+          .profile-numbers
+            div
+              strong {{ user.stats.events }}
+              span мероприятий
+            div
+              strong {{ user.stats.challenges }}
+              span челленджей
+            div
+              strong {{ user.stats.books }}
+              span книг
+          p.joined-date В KLAN с {{ dateLabel(user.joinedAt, {month:'long',year:'numeric'}) }}
+        section.detail-panel.profile-import(v-if="isOwn")
+          Icon(name="file-import")
+          h3 Ваши данные — с вами
+          p Сохраните профиль или перенесите информацию из JSON.
+          RouterLink(to="/profile/import") Импорт и экспорт
+  template(v-else-if="record")
+    .entity-cover(:class="`entity-cover--${resource}`")
+      .cover-grid
+      Icon(:name="resourceMeta[resource].icon")
+      .cover-meta
+        span {{ categoryLabels[entity.category] || entity.category || resourceMeta[resource].singular }}
+        StatusBadge(:status="entity.status")
+    .entity-heading
+      .entity-title
+        .profile-eyebrow {{ resourceMeta[resource].singular.toUpperCase() }} / KLAN
+        h1 {{ entity.title }}
+        p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
+      NButton(v-if="canEdit" secondary @click="showEditor = true")
+        template(#icon)
+          Icon(name="pen")
+        | Редактировать
+    .action-error(v-if="actionError" role="alert") {{ actionError }}
+    .detail-columns
+      .detail-main
+        section.detail-panel
+          h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
+          p.prose {{ entity.description }}
+          p.prose(v-if="entity.content") {{ entity.content }}
+          .profile-tags(v-if="entity.tags.length")
+            span(v-for="tag in entity.tags" :key="tag.id") {{ tag.name }}
+        template(v-if="resource === 'challenges'")
+          section.detail-panel
+            .section-heading
+              h2 Общий результат
+              span {{ entity.goal?.unit || 'ед.' }}
+            .challenge-progress
+              strong {{ resultTotal.toLocaleString('ru-RU') }}
+              span(v-if="entity.goal") / {{ entity.goal.target.toLocaleString('ru-RU') }} {{ entity.goal.unit }}
+            .progress-track
+              span(:style="{width: `${Math.min(100, resultTotal / (entity.goal?.target || 1) * 100)}%`}")
+            p.progress-caption Каждый результат приближает нас к цели.
+          ChallengeResultsSection(:key="`results-${entity.id}`" :entity="entity")
+          section.detail-panel
+            .section-heading
+              h2 Личный зачёт
+              span {{ leaderboard.length }} участников
+            .leaderboard
+              .leader-row(v-for="(row,index) in leaderboard" :key="row.user.id" :class="{'leader-row--own':row.user.id === auth.user?.id}")
+                span.rank {{ String(index+1).padStart(2,'0') }}
+                Avatar(:user="row.user" size="sm")
+                RouterLink.leader-name(:to="userPath(row.user)")
+                  strong {{ row.user.name }}
+                  small {{ row.team || 'Соло' }}
+                b {{ row.total.toLocaleString('ru-RU') }}
+              p.empty-inline(v-if="!leaderboard.length") Первым участником можете стать вы.
+          section.detail-panel(v-if="teamResults.length")
+            h2 Командный зачёт
+            .team-score(v-for="(team,index) in teamResults" :key="team.name")
+              span.rank {{ String(index+1).padStart(2,'0') }}
+              strong {{ team.name }}
+              b {{ team.total.toLocaleString('ru-RU') }}
+        section.detail-panel(v-if="['events','teams'].includes(resource)")
+          .section-heading
+            h2 Участники
+            span {{ entity.participants.length }}{{ entity.capacity ? ` / ${entity.capacity}` : '' }}
+          .participant-list
+            .participant-row(v-for="part in entity.participants" :key="part.user.id")
+              RouterLink.participant-person(:to="userPath(part.user)")
+                Avatar(:user="part.user" size="sm")
+                div
+                  strong {{ part.user.name }}
+                  small {{ part.user.location.city }}
+              .participant-items(v-if="part.items?.length")
+                span(v-for="item in part.items" :key="item.id") {{ item.name }} × {{ item.quantity || 1 }}
+            p.empty-inline(v-if="!entity.participants.length") Здесь пока никого. Присоединяйтесь первым.
+      aside.detail-side
+        section.detail-panel.action-panel(v-if="['events','teams','challenges'].includes(resource)")
+          .info-row(v-if="entity.schedule")
+            Icon(name="calendar")
+            div
+              small {{ resource === 'challenges' ? 'Период проведения' : 'Когда встречаемся' }}
+              strong {{ dateLabel(entity.schedule.start) }}{{ resource === 'challenges' ? ` — ${dateLabel(entity.schedule.end)}` : '' }}
+              span(v-if="resource === 'events'") {{ new Date(entity.schedule.start).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) }} · ваше время
+          .info-row(v-if="entity.location")
+            Icon(name="location-dot")
+            div
+              small Где
+              strong {{ [entity.location.city, entity.location.country].filter(value => value.trim()).join(', ') || 'Место не указано' }}
+          .info-row(v-if="entity.goal")
+            Icon(name="bullseye")
+            div
+              small Цель челленджа
+              strong {{ entity.goal.target.toLocaleString('ru-RU') }} {{ entity.goal.unit }}
+          .info-row
+            Icon(name="users")
+            div
+              small Вместе с вами
+              strong {{ entity.participants.length }} участников
+          .participation-notice(v-if="participant")
+            Icon(name="circle-check")
+            | {{ participant.team ? `Вы участвуете за ${participant.team.title}` : 'Вы участвуете' }}
+          NButton(v-if="!participant && !ended" type="primary" block :loading="busy" @click="join") {{ resource === 'teams' ? 'Вступить в команду' : resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
+          NButton(v-if="participant && resource === 'events' && !ended" type="primary" block @click="showItems = true")
+            template(#icon)
+              Icon(name="backpack")
+            | Возьму с собой
+          NButton(v-if="participant && resource === 'challenges' && !ended && started" type="primary" block @click="showResult = true")
+            template(#icon)
+              Icon(name="plus")
+            | Записать результат
+          p.join-hint(v-if="participant && resource === 'challenges' && !ended && !started") Запись результатов откроется {{ dateLabel(entity.schedule?.start) }}.
+          p.closed-notice(v-if="ended") {{ resource === 'teams' ? 'Команда в архиве' : 'Участие завершено' }}
+          NButton.leave-button(v-if="participant && !ended" quaternary block :loading="busy" @click="leave") {{ resource === 'teams' ? 'Покинуть команду' : 'Отменить участие' }}
+          p.join-hint(v-if="resource === 'teams' && !participant && !ended") Одновременно можно состоять только в одной активной команде.
+        section.detail-panel.personal-score(v-if="resource === 'challenges' && participant")
+          span МОЙ РЕЗУЛЬТАТ
+          strong {{ ownTotal.toLocaleString('ru-RU') }}
+          small {{ entity.goal?.unit || 'единиц' }} за всё время
+          .own-result(v-for="result in (entity.results || []).filter(r => r.user.id === auth.user?.id).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7)" :key="result.date")
+            span {{ dateLabel(result.date) }}
+            b {{ result.value }}
+        section.detail-panel(v-if="resource === 'books'")
+          h2 Книга объединяет
+          button.readers-button(type="button" @click="showReaders = true")
+            Icon(name="book-open")
+            strong {{ entity.readers?.length || 0 }}
+            span уже прочитали
+          NButton(type="primary" block :loading="busy" @click="toggleRead")
+            template(#icon)
+              Icon(:name="hasRead ? 'check' : 'plus'")
+            | {{ hasRead ? 'Прочитано · убрать отметку' : 'Я прочитал эту книгу' }}
+        section.detail-panel(v-if="entity.author")
+          h2 {{ resource === 'feedback' ? 'Автор предложения' : 'Организатор / автор' }}
+          RouterLink.author-link(:to="userPath(entity.author)")
+            Avatar(:user="entity.author" size="sm")
+            div
+              strong {{ entity.author.name }}
+              small(v-if="entity.author.role === 'admin'") Администратор
+        section.detail-panel.detail-note
+          Icon(name="shield-halved")
+          p Только для участников KLAN. Берегите доверие и личную информацию друг друга.
+          RouterLink(to="/rules") Правила сообщества
+    EntityEditorModal(v-model:show="showEditor" :resource="resource" :entity="entity" @saved="load")
+    EventItemsModal(v-if="resource === 'events'" v-model:show="showItems" :entity="entity" @saved="load")
+    ChallengeJoinModal(v-if="resource === 'challenges'" v-model:show="showJoin" :entity="entity" @saved="load")
+    ChallengeResultModal(v-if="resource === 'challenges'" v-model:show="showResult" :entity="entity" @saved="load")
+    ReadersModal(v-if="resource === 'books'" v-model:show="showReaders" :readers="entity.readers || []")
+</template>
+
+<style scoped>
+.profile-team-list{display:flex;flex-direction:column;gap:1rem}.profile-team-card+.profile-team-card{border-top:1px solid #ffffff0a;padding-top:1rem}.profile-team-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap}.profile-team-heading>a{color:#e7b78f;text-decoration:none;font-weight:600;font-size:.95rem;overflow-wrap:anywhere}.profile-team-heading>a:hover{color:#ffd0ab;text-decoration:underline}.profile-team-heading>a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem;border-radius:.2rem}.profile-team-heading>span{font-size:.72rem;color:#aa998b;white-space:nowrap}.profile-team-card>p{font-size:.82rem;color:#b4aca6;line-height:1.8;margin:.6rem 0 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}.profile-teams .profile-team-empty{color:#93877e;font-size:.8rem;line-height:1.7;margin:0}.profile-team-card>.profile-team-empty{margin-top:.5rem}
+.detail-refresh-error{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #755d33;background:#2b251b;border-radius:.6rem;padding:.8rem;margin-bottom:1rem;color:#dcc391;font-size:.78rem}.detail-refresh-error>span{min-width:0;overflow-wrap:anywhere}
+.profile-title{min-width:0}.profile-eyebrow{flex-wrap:wrap}.profile-id{font-variant-numeric:tabular-nums;color:#9f948c;white-space:nowrap}@media(max-width:45rem){.detail-columns--profile>.detail-side{grid-row:auto}}
+.detail-page{max-width:78rem;margin:0 auto}.detail-back{display:inline-flex;align-items:center;gap:.6rem;color:#a79b91;text-decoration:none;font-size:.78rem;margin-bottom:1.6rem}.detail-back:hover{color:#ff9b55}.detail-error,.action-error{padding:1.4rem;border:1px solid #753c33;background:#291a17;border-radius:.8rem;color:#e2a89b}.action-error{margin-bottom:1rem;font-size:.85rem}.profile-banner{height:10rem;border:1px solid #4d392a;border-radius:1rem 1rem 0 0;background:radial-gradient(ellipse at 80% 20%,#79512b55,transparent 50%),linear-gradient(130deg,#28221c,#191a18);position:relative;overflow:hidden;padding:1.5rem;display:flex;align-items:flex-start;justify-content:flex-end}.profile-banner>span{color:#b58b69;font-size:.6rem;letter-spacing:.18em;z-index:1}.banner-lines{position:absolute;inset:-5rem;background:repeating-linear-gradient(125deg,transparent,transparent 4rem,#d1a9780a 4rem,#d1a9780a 4.1rem);transform:rotate(-5deg)}.profile-heading{display:flex;align-items:center;gap:1.3rem;padding:0 1.5rem 1.7rem;margin-top:-2rem;position:relative}.profile-heading>:deep(.avatar){width:6.5rem;height:6.5rem;border:6px solid #151515;font-size:2rem;border-radius:1.1rem;flex-shrink:0}.profile-title{flex:1;padding-top:2.6rem}.profile-title h1,.entity-title h1{font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.profile-title p{display:flex;align-items:center;gap:.5rem;margin:0;color:#9f948c;font-size:.8rem}.profile-heading>.n-button{margin-top:2.4rem}.profile-eyebrow{display:flex;align-items:center;gap:.5rem;font-size:.57rem;letter-spacing:.14em;color:#ae8d72}.admin-mark{border:1px solid #705035;border-radius:.2rem;padding:.15rem .3rem;color:#eaa16a}.detail-columns{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1.2rem;align-items:start}.detail-main,.detail-side{display:flex;flex-direction:column;gap:1.2rem;min-width:0}.detail-panel{border:1px solid #302d29;border-radius:.9rem;padding:1.5rem;background:#1a1919}.detail-panel h2{font-size:1rem;font-weight:650;margin:0 0 1rem;letter-spacing:-.02em;display:flex;align-items:center;gap:.6rem}.detail-panel h2>:deep(svg){font-size:.9rem;color:#d88d52}.prose{white-space:pre-line;color:#b4aca6;line-height:1.9;font-size:.86rem;margin:0 0 1rem;overflow-wrap:anywhere}.prose:last-child{margin-bottom:0}.profile-tags,.interest-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.4rem}.profile-tags>*{font-size:.7rem;background:#36271d;border:1px solid #5c3c25;padding:.4rem .7rem;color:#e8a571;border-radius:.4rem;text-decoration:none}.interest-list{margin-top:0}.interest-list>span{font-size:.78rem;border:1px solid #3e3831;padding:.55rem .75rem;border-radius:.5rem;color:#b8aaa0;background:#24211e}.fact-list{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:.85rem}.fact-list>li{display:flex;align-items:baseline;gap:.7rem;font-size:.84rem;color:#bcb1a8;line-height:1.6}.fact-list>li>:deep(svg){color:#dd9259;font-size:.75rem;flex-shrink:0}.profile-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:1.3rem}.profile-numbers>div{display:flex;flex-direction:column;gap:.25rem}.profile-numbers strong{font-size:1.55rem;color:#f5dbc7;font-weight:600}.profile-numbers span{font-size:.59rem;color:#96877b}.joined-date{font-size:.7rem;margin:1.4rem 0 0;border-top:1px solid #ffffff0a;padding-top:1rem;color:#847b73}.team-history{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:#c4b7ac;font-size:.75rem;padding:.6rem 0}.team-history>span{flex:1}.team-history>:deep(svg){color:#cf8b57}.profile-import>:deep(svg){color:#e49960}.profile-import h3{font-size:.9rem;margin:.8rem 0 .5rem}.profile-import p,.detail-note p{font-size:.73rem;color:#958b83;line-height:1.7}.profile-import>a,.detail-note>a{font-size:.72rem;color:#d08b58;text-decoration:none}.entity-cover{position:relative;min-height:10rem;border:1px solid #45382d;border-radius:1rem;background:linear-gradient(115deg,#302b22,#161c17);padding:1.3rem;overflow:hidden;display:flex;align-items:flex-end}.entity-cover>:deep(svg){font-size:8rem;position:absolute;right:3rem;top:.7rem;color:#d0c2a814;transform:rotate(-15deg)}.entity-cover--books{background:linear-gradient(120deg,#37302a,#1b1c20)}.entity-cover--challenges{background:linear-gradient(120deg,#4b2e20,#1e1715)}.entity-cover--teams{background:linear-gradient(120deg,#293930,#141a16)}.cover-grid{position:absolute;inset:0;background-image:linear-gradient(#ffffff05 1px,transparent 1px),linear-gradient(90deg,#ffffff05 1px,transparent 1px);background-size:2rem 2rem;mask-image:linear-gradient(90deg,transparent,#000)}.cover-meta{display:flex;gap:.7rem;align-items:center;position:relative}.cover-meta>span{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;background:#0004;padding:.4rem .65rem;border:1px solid #ffffff16;border-radius:.3rem;color:#c6bdaa}.entity-heading{display:flex;align-items:center;gap:1rem;justify-content:space-between;padding:1.6rem 0}.entity-motto{margin:.5rem 0 0;color:#bc8c66;font-size:.9rem;font-style:italic}.info-row{display:flex;gap:.85rem;margin-bottom:1.4rem}.info-row>:deep(svg){color:#b98962;font-size:.95rem;margin-top:.2rem}.info-row>div{display:flex;flex-direction:column;gap:.25rem}.info-row small{font-size:.65rem;color:#8b7e74}.info-row strong{font-size:.8rem;font-weight:500;color:#d4c6ba;line-height:1.5}.info-row span{font-size:.7rem;color:#9b8a7b}.participation-notice{display:flex;gap:.5rem;align-items:center;padding:.7rem;border:1px solid #3e5944;background:#233328;color:#a8c6a9;border-radius:.5rem;font-size:.72rem;line-height:1.5;margin-bottom:1rem}.leave-button{margin-top:.4rem;font-size:.7rem}.join-hint,.closed-notice{font-size:.7rem;color:#94877b;line-height:1.7;margin:1rem 0 0}.closed-notice{padding:.7rem;text-align:center;border:1px solid #443b32;border-radius:.4rem}.participant-list{display:flex;flex-direction:column;gap:.8rem}.participant-row{border-top:1px solid #ffffff09;padding-top:.8rem}.participant-person,.author-link{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:#d1c7be}.participant-person strong,.author-link strong{font-size:.8rem;font-weight:500;display:block}.participant-person small,.author-link small{font-size:.65rem;color:#8f8277;display:block;margin-top:.2rem}.participant-items{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0 2.7rem}.participant-items>span{font-size:.65rem;color:#b8a18d;background:#29231f;padding:.25rem .45rem;border-radius:.3rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.section-heading>h2{margin:0}.section-heading>span{color:#98897d;font-size:.7rem}.challenge-progress{display:flex;align-items:baseline;gap:.5rem;margin-top:.6rem}.challenge-progress strong{font-size:2.4rem;letter-spacing:-.04em;color:#efb183;font-weight:600}.challenge-progress>span{color:#9a8879;font-size:.85rem}.progress-track{height:.45rem;border-radius:1rem;background:#392c22;overflow:hidden;margin-top:.9rem}.progress-track>span{display:block;height:100%;background:linear-gradient(90deg,#d77832,#ffb071);border-radius:1rem;transition:width .4s}.progress-caption{font-size:.7rem;color:#978578;margin-bottom:0}.leader-row{display:flex;align-items:center;gap:.65rem;padding:.65rem .5rem;border-bottom:1px solid #ffffff09;border-radius:.4rem}.leader-row--own{background:#3b2b1e}.rank{font-size:.7rem;color:#a78365;min-width:1.3rem}.leader-name{flex:1;text-decoration:none;min-width:0}.leader-name strong{font-size:.8rem;color:#cec2b8;font-weight:500;display:block}.leader-name small{font-size:.6rem;color:#928073}.leader-row>b,.team-score>b{color:#e6ba96;font-size:.9rem;font-variant-numeric:tabular-nums}.team-score{display:flex;align-items:center;gap:.7rem;padding:.7rem 0;border-bottom:1px solid #ffffff09}.team-score>strong{flex:1;font-size:.8rem;font-weight:500;color:#c7b6a9}.personal-score{background:linear-gradient(140deg,#34251b,#211c18);border-color:#614026}.personal-score>span{display:block;font-size:.6rem;letter-spacing:.1em;color:#c88f64}.personal-score>strong{display:block;font-size:3rem;line-height:1.5;color:#ffb67e;letter-spacing:-.06em;font-weight:500}.personal-score>small{font-size:.7rem;color:#ba9171}.own-result{display:flex;justify-content:space-between;border-top:1px solid #ffffff0b;margin-top:.7rem;padding-top:.5rem;font-size:.7rem;color:#bda18b}.own-result>b{color:#e0b18a}.empty-inline{color:#8f8177;font-size:.8rem}.readers-button{display:flex;align-items:center;gap:.65rem;font:inherit;width:100%;color:#d3bcaa;background:#29211c;border:1px solid #44342a;border-radius:.5rem;padding:.8rem;margin-bottom:1rem;cursor:pointer}.readers-button:hover{border-color:#98714f}.readers-button strong{font-size:1.35rem;color:#f5b888}.readers-button span{font-size:.72rem}.detail-note>:deep(svg){color:#8b715b}.detail-note p{margin:.7rem 0}.detail-panel .n-button{min-height:2.75rem}@media(max-width:58rem){.detail-columns{grid-template-columns:minmax(0,1fr) 16rem}.detail-panel{padding:1.15rem}.profile-heading{padding-left:1rem;padding-right:1rem}}@media(max-width:45rem){.detail-columns{grid-template-columns:1fr}.detail-side{grid-row:1}.profile-heading{flex-wrap:wrap;gap:.8rem}.profile-title{padding-top:2rem}.profile-heading>.n-button{margin:0}.profile-title h1{font-size:1.6rem}.profile-heading>:deep(.avatar){width:5rem;height:5rem}.profile-banner{height:8rem}.entity-heading{align-items:flex-start;flex-direction:column}.entity-cover{min-height:8rem}.entity-cover>:deep(svg){font-size:6rem;right:2rem}.entity-title h1{font-size:1.8rem}.detail-note{display:none}.info-row{margin-bottom:1rem}.detail-side{gap:.8rem}.personal-score>strong{font-size:2.5rem}.detail-main,.detail-columns{gap:.8rem}.detail-back{margin-bottom:1rem}}
+</style>
+

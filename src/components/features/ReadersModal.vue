@@ -1,0 +1,20 @@
+<script setup lang="ts">
+import { NModal } from 'naive-ui';
+import { userPath } from '@shared/user-links';
+import type { User } from '@shared/contracts';
+import Avatar from '@/components/ui/Avatar.vue';
+defineProps<{show:boolean;readers:User[]}>();const emit=defineEmits<{'update:show':[value:boolean]}>();
+</script>
+<template lang="pug">
+NModal(:show="show" preset="card" title="Уже прочитали" :style="{width:'29rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
+  .reader-list
+    RouterLink.reader(v-for="user in readers" :key="user.id" :to="userPath(user)" @click="emit('update:show',false)")
+      Avatar(:user="user")
+      div
+        strong {{ user.name }}
+        small {{ user.location.city }}
+    p(v-if="!readers.length") Станьте первым, кто прочитает эту книгу.
+</template>
+<style scoped>
+.reader-list{display:flex;flex-direction:column;gap:.6rem}.reader{display:flex;gap:.8rem;align-items:center;text-decoration:none;color:inherit;padding:.6rem;border-radius:.5rem}.reader:hover{background:#ffffff08}.reader strong{display:block;font-size:.85rem}.reader small{color:#a49a93;font-size:.7rem}.reader-list>p{color:#a49a93}
+</style>
