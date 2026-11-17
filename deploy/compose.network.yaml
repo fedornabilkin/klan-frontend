@@ -1,0 +1,10 @@
+# Run together with the root compose.yaml; the network is created separately.
+services:
+  frontend:
+    networks:
+      - klan
+
+networks:
+  klan:
+    external: true
+    name: ${KLAN_NETWORK:-klan}

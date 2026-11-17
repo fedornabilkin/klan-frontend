@@ -1,0 +1,19 @@
+{$KLAN_DOMAIN} {
+    encode zstd gzip
+
+    @internal path /internal /internal/*
+    handle @internal {
+        respond "Not found" 404
+    }
+
+    @backend path /api /api/* /ws /ws/*
+    handle @backend {
+        reverse_proxy {$API_UPSTREAM}
+    }
+
+    handle {
+        root * {$FRONTEND_ROOT}
+        try_files {path} /index.html
+        file_server
+    }
+}
