@@ -14,6 +14,8 @@ sudo bash setup-server.sh
 
 Сохраните [setup-deployment.sh](../Deploy/setup-deployment.sh) рядом с [setup-server.sh](../Deploy/setup-server.sh). На VPS выполните `sudo bash setup-deployment.sh configure-ip`. Укажите публичный IPv4, HTTPS-порт (по умолчанию `8443`) и параметры бота. Мастер настроит nginx, сохранит адрес сайта в настройках API и получит автоматически обновляемый сертификат на IP. Для проверки Let’s Encrypt нужен входящий TCP 80. Для сайта откройте выбранный HTTPS-порт. [Сертификаты на IP](https://letsencrypt.org/2026/03/11/shorter-certs-certbot)
 
+Чтобы разрешить вход по аккаунту Telegram без проверки групп, выполните `sudo env TELEGRAM_REQUIRE_GROUP_MEMBERSHIP=false bash setup-deployment.sh configure-ip`. Мастер запросит данные бота и предложит указать числовые ID администраторов. Подтверждение входа через бота остаётся обязательным.
+
 Для подключения GitHub выполните на своём компьютере `bash setup-deployment.sh github`. Введите тот же HTTPS-адрес с портом, например `https://203.0.113.10:8443`. Для настройки одного репозитория добавьте `frontend`, `backend` или `bot`. GitHub Actions запускает проверки и выкладку после мержа в `main`. Для первого ручного выпуска дождитесь готовности API до запуска фронтенда и бота.
 
 ## Справка для установки с доменом

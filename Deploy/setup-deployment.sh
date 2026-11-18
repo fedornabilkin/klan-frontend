@@ -504,7 +504,10 @@ read_setting() {
 
 configure_runtime() {
   local backend=/opt/klan/backend/shared/runtime.env bot=/opt/klan/bot/shared/runtime.env
-  local token='' secret='' api_token='' bot_token='' api_secret='' bot_secret='' username groups admins password origin mount bind_file bind address url old_url
+  local token='' secret='' api_token='' bot_token='' api_secret='' bot_secret='' username groups='' admins password origin mount bind_file bind address url old_url
+  local membership_override="${TELEGRAM_REQUIRE_GROUP_MEMBERSHIP:-}"
+  [[ -z "$membership_override" || "$membership_override" == true || "$membership_override" == false ]] ||
+    fail 'TELEGRAM_REQUIRE_GROUP_MEMBERSHIP принимает true или false.'
   local ids='^-[1-9][0-9]*(,-[1-9][0-9]*)*$' admin_ids='^([1-9][0-9]*(,[1-9][0-9]*)*)?$'
   if selected backend; then
     api_token=$(get_value "$backend" TELEGRAM_BOT_TOKEN)
@@ -543,9 +546,13 @@ configure_runtime() {
     if [[ ! -f "$backend" ]]; then
       username=$(ask 'Имя бота в Telegram без @' ''); username=${username#@}
       [[ "$username" =~ ^[a-zA-Z0-9_]{5,32}$ ]] || fail 'Проверьте имя бота.'
-      groups=$(ask 'Числовые ID разрешённых групп Telegram через запятую' ''); groups=${groups// /}
-      [[ "$groups" =~ $ids ]] || fail 'ID групп должны быть отрицательными числами через запятую.'
-      admins=$(ask 'ID администраторов Telegram через запятую (можно оставить пустым)' ''); admins=${admins// /}
+      if [[ "$membership_override" != false ]]; then
+        groups=$(ask 'Числовые ID разрешённых групп Telegram через запятую' '')
+        groups=${groups// /}
+        [[ "$groups" =~ $ids ]] || fail 'ID групп должны быть отрицательными числами через запятую.'
+      fi
+      admins=$(ask 'ID администраторов Telegram через запятую (можно оставить пустым)' '')
+      admins=${admins// /}
       [[ "$admins" =~ $admin_ids ]] || fail 'ID администраторов должны быть положительными числами через запятую.'
       password=$(openssl rand -hex 32)
       cat <<ENV | save_setting "$backend"
@@ -556,15 +563,28 @@ POSTGRES_PASSWORD=$password
 DATABASE_URL=postgresql://klan:$password@db:5432/klan
 TELEGRAM_BOT_TOKEN=$token
 TELEGRAM_BOT_USERNAME=$username
+TELEGRAM_REQUIRE_GROUP_MEMBERSHIP=${membership_override:-true}
 TELEGRAM_GROUP_IDS=$groups
 TELEGRAM_GROUP_LEVELS={}
 TELEGRAM_MEMBERSHIP_TTL_SECONDS=60
 TELEGRAM_ADMIN_IDS=$admins
 BOT_INTERNAL_SECRET=$secret
 ENV
-    elif selected frontend; then
-      origin=$(get_value "$backend" APP_ORIGIN)
-      [[ "$origin" == "$site_origin" ]] || fail "Установите APP_ORIGIN=$site_origin в $backend."
+    else
+      if selected frontend; then
+        origin=$(get_value "$backend" APP_ORIGIN)
+        [[ "$origin" == "$site_origin" ]] || fail "Установите APP_ORIGIN=$site_origin в $backend."
+      fi
+      if [[ -n "$membership_override" && "$(get_value "$backend" TELEGRAM_REQUIRE_GROUP_MEMBERSHIP)" != "$membership_override" ]]; then
+        if [[ "$membership_override" == true ]]; then
+          groups=$(get_value "$backend" TELEGRAM_GROUP_IDS)
+          [[ "$groups" =~ $ids ]] || fail "Заполните ID групп в $backend перед включением проверки."
+        fi
+        runuser -u deploy -- awk -v required="$membership_override" '
+          !/^TELEGRAM_REQUIRE_GROUP_MEMBERSHIP=/ {print}
+          END {print "TELEGRAM_REQUIRE_GROUP_MEMBERSHIP=" required}
+        ' "$backend" | save_setting "$backend"
+      fi
     fi
     bind_file=/opt/klan/backend/shared/api-bind-address
     if [[ "$role" == backend ]]; then
