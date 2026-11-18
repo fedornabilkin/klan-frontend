@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional interactive setup for deployments with a domain.
+# Interactive website and GitHub setup.
 set -euo pipefail
 set +x
 umask 077
@@ -29,7 +29,7 @@ setup_github() (
   set -euo pipefail
   unset GH_DEBUG
   export GH_HOST=github.com GH_PROMPT_DISABLED=1
-  local command component repository permission environments host port key_path host_key key_type key_data _ignored domain='' origin='' known_host scratch
+  local command component repository permission environments host port key_path host_key key_type key_data _ignored origin='' known_host scratch website_default
   local -a components=()
   local -A existing_environment=()
   for command in gh ssh ssh-keygen mktemp; do
@@ -66,16 +66,20 @@ setup_github() (
   [[ -f "$key_path" && -r "$key_path" ]] || fail 'Закрытый SSH-ключ не найден или недоступен для чтения.'
   ssh-keygen -y -P '' -f "$key_path" >/dev/null 2>&1 ||
     fail 'Нужен корректный SSH-ключ без passphrase, доступный текущему пользователю.'
-  host_key="$(ask 'Публичный ключ ХОСТА из серверного режима (ssh-ed25519 AAAA...)' '')"
+  host_key="$(ask 'Публичный SSH-ключ сервера (ssh-ed25519 AAAA...)' '')"
   [[ "$host_key" != *$'\n'* && "$host_key" != *$'\r'* ]] || fail 'Ключ хоста должен занимать одну строку.'
   read -r key_type key_data _ignored <<< "$host_key"
   [[ "$key_type" =~ ^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa)$ && "$key_data" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] ||
     fail 'Некорректный публичный ключ хоста.'
   if selected frontend; then
-    domain="$(ask 'Домен сайта без https:// и пути' '')"
-    [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && "$domain" == *.* && "$domain" != *..* ]] ||
-      fail 'Укажите домен сайта без схемы, порта и пути.'
-    origin="https://$domain"
+    website_default="https://$host"
+    if is_ipv4 "$host"; then website_default="https://$host:8443"; fi
+    origin="$(ask 'HTTPS-адрес сайта, включая порт' "$website_default")"
+    origin=${origin%/}
+    [[ "$origin" == https://* ]] || fail 'Адрес сайта должен начинаться с https://.'
+    validate_origin "$origin"
+    origin=${origin%:443}
+    origin=${origin,,}
   fi
 
   scratch="$(mktemp -d)"
@@ -118,12 +122,20 @@ setup_frontend_nginx() (
   umask 077
   nginx_setup_fail() { printf 'Klan nginx: %s\n' "$1" >&2; exit 1; }
   [[ $EUID == 0 ]] || nginx_setup_fail 'Run the installer with sudo.'
-  for utility in nginx certbot systemctl flock awk sed cmp install realpath; do
+  for utility in nginx "$certbot_command" systemctl flock awk sed cmp install realpath; do
     command -v "$utility" >/dev/null || nginx_setup_fail "Missing tool: $utility"
   done
   # Validated public settings are supplied by the installer's prompt layer.
   # shellcheck disable=SC2154
   local domain="${site_domain,,}" upstream="$api_upstream" upstream_host port
+  local http_ipv6='    listen [::]:80;' tls_ipv6='    listen [::]:443 ssl;' tls_default=''
+  local -a certificate_args=(--domain "$domain")
+  if [[ "$mode" == configure-ip ]]; then
+    http_ipv6=''
+    tls_ipv6=''
+    tls_default=' default_server'
+    certificate_args=(--ip-address "$domain" --preferred-profile shortlived)
+  fi
   [[ "$domain" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$domain" == *.* && "$domain" != *..* ]] || nginx_setup_fail 'Invalid site domain.'
   [[ "$upstream" =~ ^https?://([A-Za-z0-9][A-Za-z0-9.-]*|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?$ ]] || nginx_setup_fail 'API upstream must be an HTTP(S) origin.'
   upstream_host="${upstream#*://}"
@@ -204,6 +216,16 @@ setup_frontend_nginx() (
   if systemctl is-active --quiet nginx; then was_active=1; fi
   nginx -t || nginx_setup_fail 'Existing nginx configuration is invalid; nothing was replaced.'
   nginx -T > "$work_dir/before.dump" 2> "$work_dir/before.log" || nginx_setup_fail 'Cannot inspect existing nginx virtual hosts.'
+  if [[ "$mode" == configure-ip ]]; then
+    local listeners
+    listeners=$(ss -H -ltn "sport = :$site_port") || nginx_setup_fail 'Cannot check the HTTPS port.'
+    if [[ -n "$listeners" ]]; then
+      if (( had_enabled != 1 )) || ! grep -Fxq "$marker" "$available" ||
+        ! grep -Fxq "    listen $site_port ssl default_server;" "$available"; then
+        nginx_setup_fail "Порт $site_port уже занят. Укажите свободный порт."
+      fi
+    fi
+  fi
 
   nginx_render_static() {
     local destination_upstream=$1
@@ -215,18 +237,18 @@ map \$http_upgrade \$klan_connection_upgrade {
 }
 server {
     listen 80;
-    listen [::]:80;
+$http_ipv6
     server_name $domain;
     location ^~ /.well-known/acme-challenge/ {
         root $acme_root;
     }
     location / {
-        return 301 https://$domain\$request_uri;
+        return 301 $site_origin\$request_uri;
     }
 }
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
+    listen $site_port ssl$tls_default;
+$tls_ipv6
     server_name $domain;
     ssl_certificate $cert_dir/fullchain.pem;
     ssl_certificate_key $cert_dir/privkey.pem;
@@ -341,7 +363,7 @@ CONFIG
 $marker
 server {
     listen 80;
-    listen [::]:80;
+$http_ipv6
     server_name $domain;
     location ^~ /.well-known/acme-challenge/ { root $acme_root; }
     location = /internal { return 404; }
@@ -350,9 +372,9 @@ server {
 }
 CONFIG
     nginx_apply_candidate "$work_dir/bootstrap.conf" || nginx_setup_fail 'HTTP certificate bootstrap failed.'
-    certbot certonly --webroot --webroot-path "$acme_root" --cert-name "$domain" \
-      --domain "$domain" --email "$cert_email" --agree-tos --non-interactive --keep-until-expiring ||
-      nginx_setup_fail 'Certificate issuance failed. Check public DNS and inbound TCP 80; the previous nginx configuration will be restored.'
+    "$certbot_command" certonly --webroot --webroot-path "$acme_root" --cert-name "$domain" \
+      "${certificate_args[@]}" --email "$cert_email" --agree-tos --non-interactive --keep-until-expiring ||
+      nginx_setup_fail 'Certificate issuance failed. Check that the address reaches this server on TCP 80.'
     [[ -s "$cert_dir/fullchain.pem" && -s "$cert_dir/privkey.pem" ]] || nginx_setup_fail 'Certbot did not create the expected certificate.'
   fi
   nginx_render_static "$upstream" > "$work_dir/production.conf" || nginx_setup_fail 'Cannot write the production configuration.'
@@ -368,7 +390,9 @@ CONFIG
     install -d -m 0755 "$(dirname "$hook")" || nginx_setup_fail 'Cannot create the renewal hook directory.'
     install -m 0755 "$work_dir/renew.hook" "$hook" || nginx_setup_fail 'Cannot install the renewal hook.'
   fi
-  if systemctl cat certbot.timer >/dev/null 2>&1; then
+  if [[ "$certbot_command" == /snap/bin/certbot ]]; then
+    systemctl enable --now snap.certbot.renew.timer || nginx_setup_fail 'Cannot enable automatic certificate renewal.'
+  elif systemctl cat certbot.timer >/dev/null 2>&1; then
     systemctl enable --now certbot.timer || nginx_setup_fail 'Cannot enable automatic certificate renewal.'
   elif systemctl cat snap.certbot.renew.timer >/dev/null 2>&1; then
     systemctl enable --now snap.certbot.renew.timer || nginx_setup_fail 'Cannot enable automatic certificate renewal.'
@@ -380,8 +404,16 @@ CONFIG
     install -m 0600 "$work_dir/original.conf" "/var/backups/klan-nginx/klan-frontend-$(date +%Y%m%dT%H%M%S)-$$.conf" || nginx_setup_fail 'Cannot retain the previous nginx configuration.'
   fi
   finished=1
-  printf 'Klan nginx: https://%s serves /var/www/klan; API upstream %s.\n' "$domain" "$upstream"
+  printf 'Klan nginx: %s serves /var/www/klan; API upstream %s.\n' "$site_origin" "$upstream"
 )
+
+is_ipv4() {
+  local part
+  local -a octets
+  [[ "$1" =~ ^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}$ ]] || return 1
+  IFS=. read -ra octets <<< "$1"
+  for part in "${octets[@]}"; do (( part <= 255 )) || return 1; done
+}
 
 validate_domain() {
   local label
@@ -398,13 +430,17 @@ validate_origin() {
   (( 10#$port <= 65535 )) || fail 'Некорректный порт API.'
 }
 
-prepare_domain_tools() {
+prepare_site_tools() {
   local -a missing=()
   local version
   command -v curl >/dev/null || missing+=(curl)
   if selected frontend; then
     command -v nginx >/dev/null || missing+=(nginx)
-    command -v certbot >/dev/null || missing+=(certbot)
+    if [[ "$mode" == configure-domain ]]; then
+      command -v certbot >/dev/null || missing+=(certbot)
+    else
+      command -v ss >/dev/null || missing+=(iproute2)
+    fi
     command -v rsync >/dev/null || missing+=(rsync)
   fi
   if selected backend; then
@@ -513,7 +549,7 @@ configure_runtime() {
       [[ "$admins" =~ $admin_ids ]] || fail 'ID администраторов должны быть положительными числами через запятую.'
       password=$(openssl rand -hex 32)
       cat <<ENV | save_setting "$backend"
-APP_ORIGIN=https://$site_domain
+APP_ORIGIN=$site_origin
 POSTGRES_DB=klan
 POSTGRES_USER=klan
 POSTGRES_PASSWORD=$password
@@ -528,7 +564,7 @@ BOT_INTERNAL_SECRET=$secret
 ENV
     elif selected frontend; then
       origin=$(get_value "$backend" APP_ORIGIN)
-      [[ "$origin" == "https://$site_domain" ]] || fail "Проверьте APP_ORIGIN в $backend и домен сайта."
+      [[ "$origin" == "$site_origin" ]] || fail "Установите APP_ORIGIN=$site_origin в $backend."
     fi
     bind_file=/opt/klan/backend/shared/api-bind-address
     if [[ "$role" == backend ]]; then
@@ -558,19 +594,59 @@ ENV
   fi
 }
 
-configure_domain() {
-  prepare_domain_tools
+ip_certbot_command() {
+  local candidate output version
+  for candidate in /snap/bin/certbot certbot; do
+    output=$("$candidate" --version 2>/dev/null) || continue
+    [[ "$output" =~ ^certbot[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+) ]] || continue
+    version=${BASH_REMATCH[1]}
+    if dpkg --compare-versions "$version" ge 5.4.0; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  return 1
+}
+
+configure_site() {
+  prepare_site_tools
   local component
   for component in backend bot; do
     if selected "$component"; then restore_runtime "/opt/klan/$component"; fi
   done
-  local site_domain='' api_upstream='' cert_email='' previous_domain='' origin='' saved
-  if selected frontend; then previous_domain=$(read_setting /opt/klan/frontend/shared/site-domain); fi
+  local site_domain='' site_origin='' site_port=443 api_upstream='' cert_email='' certbot_command=certbot
+  local previous_domain='' previous_origin='' origin='' saved address_default port_default
+  if selected frontend; then
+    previous_domain=$(read_setting /opt/klan/frontend/shared/site-domain)
+    previous_origin=$(read_setting /opt/klan/frontend/shared/site-origin)
+    if [[ "$mode" == configure-ip ]] && ! certbot_command=$(ip_certbot_command); then
+      command -v snap >/dev/null || fail 'Установите Certbot 5.4+ для сертификата на IP и повторите команду.'
+      snap install --classic certbot
+      certbot_command=$(ip_certbot_command) || fail 'После установки не найден Certbot 5.4+.'
+    fi
+  fi
   if selected backend; then origin=$(get_value /opt/klan/backend/shared/runtime.env APP_ORIGIN); fi
   if selected frontend || { selected backend && [[ -z "$origin" ]]; }; then
-    site_domain=$(ask 'Домен сайта Клана' "${previous_domain:-${origin#https://}}")
-    site_domain=${site_domain,,}
-    validate_domain "$site_domain"
+    if [[ "$mode" == configure-ip ]]; then
+      saved=${previous_origin:-$origin}
+      saved=${saved#https://}
+      address_default=${saved%%:*}
+      port_default=8443
+      if ! is_ipv4 "$address_default"; then address_default=''; fi
+      if [[ -n "$address_default" && "$saved" == *:* ]]; then port_default=${saved##*:}; fi
+      site_domain=$(ask 'Публичный IPv4 сайта' "$address_default")
+      is_ipv4 "$site_domain" || fail 'Введите публичный IPv4.'
+      site_port=$(ask 'HTTPS-порт сайта' "$port_default")
+      if [[ ! "$site_port" =~ ^[1-9][0-9]{3,4}$ ]] || (( site_port < 1024 || site_port > 65535 || site_port == 3101 )); then
+        fail 'Выберите свободный порт от 1024 до 65535. Порт 3101 используется API.'
+      fi
+      site_origin="https://$site_domain:$site_port"
+    else
+      site_domain=$(ask 'Домен сайта Клана' "${previous_domain:-${origin#https://}}")
+      site_domain=${site_domain,,}
+      validate_domain "$site_domain"
+      site_origin="https://$site_domain"
+    fi
   fi
   if selected backend || selected bot; then configure_runtime; fi
   if selected frontend; then
@@ -584,6 +660,7 @@ configure_domain() {
     fi
     setup_frontend_nginx
     printf '%s\n' "$site_domain" | save_setting /opt/klan/frontend/shared/site-domain
+    printf '%s\n' "$site_origin" | save_setting /opt/klan/frontend/shared/site-origin
     printf '%s\n' "$api_upstream" | save_setting /opt/klan/frontend/shared/api-upstream
   fi
   printf '\nСервер готов. Для настройки GitHub на своём компьютере запустите: bash setup-deployment.sh github %s\n' "$role"
@@ -598,18 +675,19 @@ configure_domain() {
 }
 
 usage() {
-  printf '%s\n' 'sudo bash setup-deployment.sh configure-domain [all|frontend|backend|bot]' \
+  printf '%s\n' 'sudo bash setup-deployment.sh configure-ip [all|frontend|backend|bot]' \
+    'sudo bash setup-deployment.sh configure-domain [all|frontend|backend|bot]' \
     'bash setup-deployment.sh github [all|frontend|backend|bot]'
 }
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
-  github|configure-domain) mode=$1; shift ;;
+  github|configure-domain|configure-ip) mode=$1; shift ;;
   *) usage >&2; exit 2 ;;
 esac
 (( $# <= 1 )) || { usage >&2; exit 2; }
 role=${1:-all}
 case "$role" in all|frontend|backend|bot) ;; *) usage >&2; exit 2 ;; esac
 case "$mode" in
-  configure-domain) setup_server; configure_domain ;;
+  configure-domain|configure-ip) setup_server; configure_site ;;
   github) setup_github ;;
 esac
