@@ -10,7 +10,7 @@ Workflow [Production](../.github/workflows/deploy.yml) собирает `Project
 
 ## Подготовка сервера
 
-Для установки с доменом используйте существующий nginx и SSH-пользователя `deploy`. Для выпуска статики нужны Bash, `curl`, `find`, `flock`, `grep`, `realpath`, `rsync`, `sha256sum` и `tar` с gzip. Команда `sudo bash setup-server.sh configure-domain frontend` проверяет инструменты и настраивает nginx и HTTPS.
+Для установки с доменом используйте существующий nginx и SSH-пользователя `deploy`. Для выпуска статики нужны Bash, `curl`, `find`, `flock`, `grep`, `realpath`, `rsync`, `sha256sum` и `tar` с gzip. Сохраните [setup-deployment.sh](../Deploy/setup-deployment.sh) рядом с [setup-server.sh](../Deploy/setup-server.sh) и выполните `sudo bash setup-deployment.sh configure-domain frontend`. Мастер проверит инструменты и настроит nginx и HTTPS.
 
 | Путь | Назначение |
 | --- | --- |
