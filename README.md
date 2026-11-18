@@ -42,6 +42,8 @@ npm run build
 
 ## Развёртывание
 
+Production через GitHub Actions, GHCR и VPS описан в [отдельном руководстве](Docs/deployment-github-vps.md): готовые образы по digest, nginx с HTTPS и откат релиза.
+
 Обычный сервер может обслуживать `Project/dist/` через Caddy с конфигурацией `Deploy/Caddyfile`. Для Docker из корня репозитория:
 
 ```sh

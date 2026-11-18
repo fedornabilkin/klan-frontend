@@ -1,0 +1,126 @@
+name: Production
+run-name: Production · ${{ github.sha }}
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Проверки
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Project/package-lock.json
+      - run: npm ci
+        working-directory: Project
+      - name: Проверить приложение
+        working-directory: Project
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Проверить скрипты выкладки
+        run: |
+          for script in Deploy/*.sh; do bash -n "$script"; done
+          shellcheck Deploy/*.sh
+          node --test Deploy/*.test.mjs
+          bash Scripts/test-deployment-service.sh
+
+      - name: Проверить Compose без секретов
+        env:
+          IMAGE_REF: ghcr.io/example/klan-frontend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: docker compose -f Docker/compose.production.yaml config --quiet --no-env-resolution
+
+  image:
+    name: Образ
+    needs: checks
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      reference: ${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: name
+        name: Имя образа
+        run: |
+          image="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/$image" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        id: build
+        with:
+          context: .
+          file: Docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.name.outputs.image }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Продакшен
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Не выкатывать устаревший запуск
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          current="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [[ "$current" != "$GITHUB_SHA" ]]; then
+            echo "В main уже есть новый коммит. Запустите Production для актуальной main." >&2
+            exit 1
+          fi
+      - name: Выкатить проверенный образ
+        env:
+          KLAN_COMPONENT: frontend
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
+          IMAGE_REF: ${{ needs.image.outputs.reference }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash Deploy/deploy.sh

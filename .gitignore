@@ -7,6 +7,8 @@ playwright-report/
 .env
 .env.*
 !.env.example
+!.env.production.example
+runtime.env
 *.log
 *.tsbuildinfo
 .idea/
