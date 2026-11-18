@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\Project"
 where node >nul 2>nul
 if errorlevel 1 (
   echo Install Node.js 22.12 or later, then run this file again.
@@ -10,6 +10,11 @@ if errorlevel 1 (
 where npm >nul 2>nul
 if errorlevel 1 (
   echo npm is missing. Reinstall Node.js with npm.
+  pause
+  exit /b 1
+)
+node "%~dp0prepare-local.mjs"
+if errorlevel 1 (
   pause
   exit /b 1
 )

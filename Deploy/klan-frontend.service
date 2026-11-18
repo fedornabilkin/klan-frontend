@@ -7,12 +7,12 @@ Wants=network-online.target
 User=caddy
 Group=caddy
 WorkingDirectory=/srv/klan/frontend
-Environment=FRONTEND_ROOT=/srv/klan/frontend/dist
+Environment=FRONTEND_ROOT=/srv/klan/frontend/Project/dist
 Environment=XDG_DATA_HOME=/var/lib/klan-frontend/data
 Environment=XDG_CONFIG_HOME=/var/lib/klan-frontend/config
 EnvironmentFile=/etc/klan-frontend.env
-ExecStart=/usr/bin/caddy run --config /srv/klan/frontend/deploy/Caddyfile --adapter caddyfile
-ExecReload=/usr/bin/caddy reload --config /srv/klan/frontend/deploy/Caddyfile --adapter caddyfile --force
+ExecStart=/usr/bin/caddy run --config /srv/klan/frontend/Deploy/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config /srv/klan/frontend/Deploy/Caddyfile --adapter caddyfile --force
 Restart=on-failure
 RestartSec=5
 StateDirectory=klan-frontend

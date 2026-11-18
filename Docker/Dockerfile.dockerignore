@@ -1,0 +1,17 @@
+*
+!Project/
+!Project/**
+!Deploy/
+!Deploy/Caddyfile
+Project/node_modules
+Project/dist
+Project/.env*
+Project/**/.env*
+Project/.local
+Project/coverage
+Project/test-results
+Project/playwright-report
+Project/**/*.log
+Project/**/*.tsbuildinfo
+Project/.idea
+Project/.vscode

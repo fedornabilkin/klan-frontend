@@ -1,4 +1,4 @@
-# Run together with the root compose.yaml; the network is created separately.
+# Use together with Docker/compose.yaml; create the external network separately.
 services:
   frontend:
     networks:

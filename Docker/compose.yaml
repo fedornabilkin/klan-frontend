@@ -1,8 +1,10 @@
+name: klan-frontend
+
 services:
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: Docker/Dockerfile
     restart: unless-stopped
     environment:
       KLAN_DOMAIN: ${KLAN_DOMAIN:-:80}

@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite --host localhost",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "setup:local": "node ../Scripts/prepare-local.mjs",
+    "test:setup": "node --test ../Scripts/prepare-local.test.mjs"
   },
   "dependencies": {
     "@fontsource/manrope": "^5.3.0",
