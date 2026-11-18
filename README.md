@@ -42,9 +42,7 @@ npm run build
 
 ## Развёртывание
 
-Скачайте [setup-server.sh](Deploy/setup-server.sh) на VPS и выполните `sudo bash setup-server.sh`: он настроит все компоненты, nginx и HTTPS. Для одного frontend используйте `sudo bash setup-server.sh frontend`. [Короткая инструкция](Docs/deployment-github-vps.md) описывает вопросы установщика и GitHub-настройки.
-
-Далее push/merge в `main` запускает Production: GitHub собирает статику, передаёт архив с SHA256 и публикует файлы в `/var/www/klan`. После проверки HTTPS сохраняется предыдущая версия для отката. Настройки GitHub можно заполнить с компьютера через `bash setup-server.sh github` для всех компонентов, `bash setup-server.sh github frontend` для одного frontend или вручную по инструкции.
+На общем VPS выполните `sudo bash setup-server.sh`. Скрипт подготовит каталоги и хранилища трёх компонентов для пользователя `deploy`. Для отдельного веб-сервера добавьте аргумент `frontend`. [Скрипт](Deploy/setup-server.sh) · [Подготовка VPS без домена](Docs/deployment-github-vps.md)
 
 Дополнительные ручные варианты Docker/Caddy — в [deployment.md](Docs/deployment.md); диагностика, миграция и восстановление — в [справочнике эксплуатации](Docs/operations.md).
 

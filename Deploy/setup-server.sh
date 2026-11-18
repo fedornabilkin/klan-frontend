@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Save this file on the server and run: sudo bash setup-server.sh
+# Stage 1 on the VPS: sudo bash setup-server.sh
 set -euo pipefail
 set +x
 umask 077
@@ -23,9 +23,13 @@ ask_secret() {
 selected() { [[ "$role" == all || "$role" == "$1" ]]; }
 usage() {
   cat <<'HELP'
-На сервере:     sudo bash setup-server.sh [all|frontend|backend|bot]
-На компьютере:  bash setup-server.sh github [all|frontend|backend|bot]
-По умолчанию выбираются все три компонента. Пользователь сервера — deploy.
+Подготовка каталогов, прав и хранилищ на VPS:
+  sudo bash setup-server.sh [all|frontend|backend|bot]
+По умолчанию выбираются все три компонента. Нужен существующий пользователь deploy.
+
+Дополнительные команды для установки с доменом:
+  sudo bash setup-server.sh configure-domain [all|frontend|backend|bot]
+  bash setup-server.sh github [all|frontend|backend|bot]
 HELP
 }
 
@@ -403,7 +407,9 @@ validate_origin() {
   (( 10#$port <= 65535 )) || fail 'Некорректный порт API.'
 }
 
-prepare_tools() {
+deploy_docker() { runuser -u deploy -- docker "$@"; }
+
+prepare_domain_tools() {
   local -a missing=()
   local version
   command -v curl >/dev/null || missing+=(curl)
@@ -424,10 +430,9 @@ prepare_tools() {
   fi
   if selected backend || selected bot; then
     command -v docker >/dev/null || fail 'Для API и бота установите Docker Engine и Docker Compose 2.30+ на этом сервере.'
-    version=$(docker compose version --short) || fail 'Нужен Docker Compose 2.30 или новее.'
+    version=$(deploy_docker compose version --short) || fail 'Нужен Docker Compose 2.30 или новее.'
     version=${version#v}
     dpkg --compare-versions "$version" ge 2.30.0 || fail 'Нужен Docker Compose 2.30 или новее.'
-    runuser -u deploy -- docker info >/dev/null || fail 'Проверьте, что Docker запущен и доступен пользователю deploy.'
     if selected bot; then
       [[ $(uname -m) == x86_64 ]] || fail 'Образу бота нужен сервер linux/amd64.'
     fi
@@ -486,15 +491,14 @@ prepare_paths() {
     managed_dir 0700 deploy "/opt/klan/$component/shared"
     if [[ "$component" != bot ]]; then managed_dir 0700 deploy "/opt/klan/$component/incoming"; fi
     if [[ "$component" == backend ]]; then managed_dir 0700 deploy /opt/klan/backend/backups; fi
-    if [[ "$component" != frontend ]]; then restore_runtime "/opt/klan/$component"; fi
   done
   if selected frontend; then managed_dir 0755 deploy /var/www/klan; fi
   if selected backend || selected bot; then
-    docker network inspect klan-production >/dev/null 2>&1 || docker network create klan-production >/dev/null
+    deploy_docker network inspect klan-production >/dev/null 2>&1 || deploy_docker network create klan-production >/dev/null
     for component in backend bot; do
       selected "$component" || continue
       if [[ "$component" == backend ]]; then volume=klan-production-postgres; else volume=klan-production-bot-state; fi
-      docker volume inspect "$volume" >/dev/null 2>&1 || docker volume create "$volume" >/dev/null
+      deploy_docker volume inspect "$volume" >/dev/null 2>&1 || deploy_docker volume create "$volume" >/dev/null
     done
   fi
 }
@@ -507,7 +511,7 @@ configure_runtime() {
     api_token=$(get_value "$backend" TELEGRAM_BOT_TOKEN)
     api_secret=$(get_value "$backend" BOT_INTERNAL_SECRET)
     if [[ ! -f "$backend" ]]; then
-      mount=$(docker volume inspect --format '{{ .Mountpoint }}' klan-production-postgres)
+      mount=$(deploy_docker volume inspect --format '{{ .Mountpoint }}' klan-production-postgres)
       [[ -n "$mount" && -d "$mount" ]] || fail 'Не удалось проверить каталог данных PostgreSQL.'
       [[ -z $(find "$mount" -mindepth 1 -maxdepth 1 -print -quit) ]] ||
         fail "У базы уже есть данные. Восстановите её действующий runtime.env в $backend и повторите запуск."
@@ -594,10 +598,23 @@ ENV
 setup_server() {
   [[ $EUID == 0 ]] || fail 'На сервере запустите скрипт через sudo.'
   id deploy >/dev/null 2>&1 || fail 'На сервере нужен существующий пользователь deploy.'
-  prepare_tools
   exec 8>/run/klan-setup.lock
   flock -n 8 || fail 'Уже запущена другая настройка Клана.'
+  if selected backend || selected bot; then
+    deploy_docker info >/dev/null || fail 'Для подготовки хранилищ нужен работающий Docker с доступом для пользователя deploy.'
+  fi
   prepare_paths
+  printf 'Каталоги и права для deploy подготовлены в /opt/klan.\n'
+  if selected frontend; then printf 'Каталог статики: /var/www/klan.\n'; fi
+  if selected backend || selected bot; then printf 'Сеть klan-production и тома выбранных компонентов готовы.\n'; fi
+}
+
+configure_domain() {
+  prepare_domain_tools
+  local component
+  for component in backend bot; do
+    if selected "$component"; then restore_runtime "/opt/klan/$component"; fi
+  done
   local site_domain='' api_upstream='' cert_email='' previous_domain='' origin='' saved
   if selected frontend; then previous_domain=$(read_setting /opt/klan/frontend/shared/site-domain); fi
   if selected backend; then origin=$(get_value /opt/klan/backend/shared/runtime.env APP_ORIGIN); fi
@@ -633,11 +650,15 @@ setup_server() {
 
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
-  github) mode=github; shift ;;
+  github|configure-domain) mode=$1; shift ;;
   *) mode=server ;;
 esac
 role=${1:-all}
 [[ "$role" != deploy || "$mode" != server ]] || role=all
 case "$role" in all|frontend|backend|bot) ;; *) usage; exit 2 ;; esac
 (( $# <= 1 )) || { usage; exit 2; }
-if [[ "$mode" == github ]]; then setup_github; else setup_server; fi
+case "$mode" in
+  server) setup_server ;;
+  configure-domain) setup_server; configure_domain ;;
+  github) setup_github ;;
+esac

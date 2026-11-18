@@ -1,30 +1,19 @@
-# Установка frontend и автодеплой
+# Подготовка сервера Клана
 
-Нужны Debian/Ubuntu VPS, существующий пользователь `deploy` с доступом по SSH и домен с DNS-записями на этот сервер. Откройте TCP 80/443 и SSH-порт. GitHub собирает статику; установленный на VPS nginx обслуживает `/var/www/klan`.
-
-1. Скачайте [setup-server.sh](../Deploy/setup-server.sh) из этого репозитория на VPS и запустите:
-
-   ```sh
-   sudo bash setup-server.sh
-   ```
-
-   По умолчанию устанавливаются все три компонента. Для одного frontend: `sudo bash setup-server.sh frontend`. Справка: `bash setup-server.sh --help`. Скрипт запросит параметры, использует существующего пользователя `deploy`, подготовит каталоги, настроит nginx и HTTPS через Certbot, покажет данные для GitHub. Для первого сертификата понадобится email. API по умолчанию доступен на `http://127.0.0.1:3101`; при отдельном сервере укажите его доступный адрес. В backend `APP_ORIGIN` должен совпадать с публичным HTTPS-адресом сайта.
-
-2. На своём компьютере можно заполнить GitHub-настройки всех компонентов командой `bash setup-server.sh github` после входа через `gh auth login`; для одного frontend — `bash setup-server.sh github frontend`. Либо создайте **Settings → Environments → production** вручную:
-
-   | Тип | Имена |
-   | --- | --- |
-   | Secrets | `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` |
-   | Variable | `PRODUCTION_URL` — например `https://klan.example.org` |
-
-   Приватный ключ относится к пользователю деплоя. Проверенную строку ключа SSH-хоста возьмите из вывода серверного скрипта. Разрешите environment только для `main`; для автоматического выпуска отключите required reviewers и wait timer.
-
-3. Push/merge в `main` запускает [Production](../.github/workflows/deploy.yml). Повторный запуск: **Actions → Production → Run workflow → main**. После тестов workflow передаёт архив и SHA256, публикует файлы и проверяет сайт/commit через HTTPS. При ошибке восстанавливается предыдущая статика.
-
-Ручной откат на VPS от пользователя деплоя:
+На общем VPS с Debian или Ubuntu нужен существующий пользователь `deploy` с доступом к Docker. Скопируйте на сервер [setup-server.sh](../Deploy/setup-server.sh) из любого репозитория Клана. В каталоге с файлом выполните одну команду.
 
 ```sh
-bash /opt/klan/frontend/static-current/Deploy/server-release.sh rollback
+sudo bash setup-server.sh
 ```
 
-Секреты backend и Telegram остаются на VPS и не передаются в сборку frontend. Подробности nginx, проверки, миграция и обслуживание — в [справочнике эксплуатации](operations.md); локальная разработка и ручные Docker/Caddy-варианты — в [deployment.md](deployment.md).
+Скрипт создаст в `/opt/klan` отдельные каталоги фронтенда, бэкенда и бота с правами для `deploy`, а для статики — `/var/www/klan`. В Docker он подготовит сеть `klan-production` и постоянные тома для PostgreSQL и позиции чтения бота. Запуск можно повторять.
+
+Для отдельного сервера добавьте к команде `frontend`, `backend` или `bot`. Docker нужен для бэкенда и бота. Подготовка выполняется локально на VPS. IP и порт указываются позднее, при подключении сайта. Для входа по IP понадобится HTTPS с сертификатом на этот IP.
+
+## Справка для установки с доменом
+
+1. Направьте DNS сайта на VPS и откройте TCP 80 и 443. На веб-сервере выполните `sudo bash setup-server.sh configure-domain frontend`. Мастер настроит nginx и HTTPS и при первом выпуске сертификата спросит email. Для API на том же сервере подойдёт `http://127.0.0.1:3101`. В бэкенде значение `APP_ORIGIN` должно совпадать с публичным HTTPS-адресом сайта.
+2. Чтобы подключить репозиторий фронтенда к VPS, на своём компьютере войдите через `gh auth login` и выполните `bash setup-server.sh github frontend`. Мастер заполнит пять SSH-секретов и переменную `PRODUCTION_URL` в окружении `production`. Для ручной настройки используйте [список параметров](operations.md#github-environment-production).
+3. Мерж в `main` запускает [Production](../.github/workflows/deploy.yml). Для первого или повторного выпуска выберите Actions → Production → Run workflow → main. GitHub передаст архив статики с SHA256. Сервер опубликует файлы и проверит версию по HTTPS. При ошибке он восстановит предыдущую статику.
+
+Для ручного возврата версии выполните от `deploy` команду `bash /opt/klan/frontend/static-current/Deploy/server-release.sh rollback`. [Справочник по nginx, миграции и обслуживанию](operations.md) · [Локальный запуск и Docker/Caddy](deployment.md)
