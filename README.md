@@ -42,15 +42,10 @@ npm run build
 
 ## Развёртывание
 
-Production через GitHub Actions и SSH описан в [отдельном руководстве](Docs/deployment-github-vps.md). Workflow собирает статику, передаёт архив с SHA256 на VPS и публикует файлы в `/var/www/klan` для установленного nginx. После проверки публичного HTTPS-адреса сохраняется предыдущий релиз для отката. В GitHub нужны пять SSH secrets и публичная variable `PRODUCTION_URL`; сборка на VPS и контейнер frontend не требуются.
+Скачайте [setup-server.sh](Deploy/setup-server.sh) на VPS и выполните `sudo bash setup-server.sh`: он настроит все компоненты, nginx и HTTPS. Для одного frontend используйте `sudo bash setup-server.sh frontend`. [Короткая инструкция](Docs/deployment-github-vps.md) описывает вопросы установщика и GitHub-настройки.
 
-Для самостоятельного ручного запуска можно обслуживать `Project/dist/` через Caddy с конфигурацией `Deploy/Caddyfile` либо использовать Docker из корня репозитория:
+Далее push/merge в `main` запускает Production: GitHub собирает статику, передаёт архив с SHA256 и публикует файлы в `/var/www/klan`. После проверки HTTPS сохраняется предыдущая версия для отката. Настройки GitHub можно заполнить с компьютера через `bash setup-server.sh github` для всех компонентов, `bash setup-server.sh github frontend` для одного frontend или вручную по инструкции.
 
-```sh
-cp Docker/.env.example Docker/.env
-docker compose --env-file Docker/.env -f Docker/compose.yaml up -d --build
-```
-
-По умолчанию контейнер доступен на `http://localhost:8080`; Klan API должен разрешать этот origin. Подробности Node.js, Docker, HTTPS и общей сети — в [инструкции развёртывания](Docs/deployment.md).
+Дополнительные ручные варианты Docker/Caddy — в [deployment.md](Docs/deployment.md); диагностика, миграция и восстановление — в [справочнике эксплуатации](Docs/operations.md).
 
 См. [архитектуру](Docs/architecture.md), [требования](Docs/requirements.md) и [соглашения](Agreements/CONVENTIONS.md).
