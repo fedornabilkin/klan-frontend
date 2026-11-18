@@ -1,43 +1,58 @@
-# GitHub Actions → GHCR → VPS: фронтенд
+# GitHub Actions → SSH → nginx: фронтенд
 
-Production развёртывается из `main` отдельным проектом `klan-frontend-production`. CI собирает `Docker/Dockerfile` из корня репозитория и публикует образ в GHCR. VPS получает готовый образ по неизменяемому digest `IMAGE_REF=ghcr.io/…@sha256:…`; Node.js и исходники для сборки на сервере не нужны.
+Workflow [Production](../.github/workflows/deploy.yml) собирает `Project/dist` в GitHub Actions, упаковывает его в `frontend.tar.gz` и передаёт на VPS вместе с SHA256. Установленный nginx обслуживает готовые файлы из `/var/www/klan`. Node.js нужен только runner для сборки; frontend не использует Docker, Caddy, GHCR или промежуточный порт 8088 в этой схеме.
 
-Общая подготовка VPS, SSH/GHCR, порядок запуска backend → frontend → bot и восстановление описаны в [руководстве backend](https://github.com/fedornabilkin/klan-backend/blob/main/Docs/deployment-github-vps.md). Этот документ описывает настройки интерфейса и внешнего nginx. Для локальной разработки по-прежнему подходят [обычные инструкции](deployment.md).
+Общая подготовка VPS и порядок первого запуска backend → frontend → bot описаны в [руководстве backend](https://github.com/fedornabilkin/klan-backend/blob/main/Docs/deployment-github-vps.md). Отдельные ручные варианты Docker/Caddy и локальная разработка сохранены в [обычной инструкции](deployment.md).
+
+## Подготовка сервера
+
+Используйте существующий nginx, SSH-пользователя deploy и HTTPS-домен на VPS. Для frontend нужны Bash, `curl`, `find`, `flock`, `grep`, `realpath`, `rsync`, `sha256sum` и `tar` с gzip. Общий `Deploy/setup-server.sh` из backend проверяет инструменты и создаёт нужные каталоги; повторять их создание вручную не требуется.
+
+| Путь | Назначение |
+| --- | --- |
+| `/var/www/klan` | Публичная статика, читаемая nginx; deploy может обновлять файлы |
+| `/opt/klan/frontend/incoming/<SHA>-<run>-<attempt>` | Приватный входящий архив, checksum, сценарий и метаданные |
+| `/opt/klan/frontend/releases/<SHA>-<run>-<attempt>` | Приватный сохранённый релиз; публикуется только его `public/` |
+| `/opt/klan/frontend/releases/bootstrap-<timestamp>-<PID>` | Снимок содержимого web-root перед первой публикацией |
+| `/opt/klan/frontend/static-current`, `static-previous` | Ссылки на активный и предыдущий статические релизы |
+
+Общий setup создаёт `/opt/klan/frontend` и его приватные каталоги с правами `0700`, а `/var/www/klan` — `0755`. Web-root должен быть обычным каталогом, без симлинка, `.git`, `Project` и исходного `package.json`. Сценарий копирует только публичные файлы; архивы, сценарии и исторические env-файлы в web-root не попадают. `.well-known/` сохраняется при публикации.
 
 ## Схема доступа
 
-- nginx на хосте принимает HTTP/HTTPS на 80/443 и хранит сертификаты Certbot.
-- `/api`, `/api/*`, `/ws`, `/ws/*` идут из nginx **напрямую** в `127.0.0.1:3101` — опубликованный на loopback порт backend. Пути не переписываются, WebSocket Upgrade передаётся.
-- `/internal` и `/internal/*` возвращают 404; браузеру эти маршруты недоступны.
-- Статика и SPA-маршруты идут в `127.0.0.1:8088` → Caddy `:80` внутри контейнера frontend. Caddy возвращает `index.html` для адресов приложения.
-- Frontend подключён к существующей Docker-сети `klan-production`; адрес API внутри неё — `api:3001`. HTTPS внутри контейнера выключен. Порт 443 контейнера не публикуется.
+- nginx принимает HTTP/HTTPS на 80/443 и хранит сертификаты Certbot.
+- `/api`, `/api/*`, `/ws`, `/ws/*` идут напрямую в `127.0.0.1:3101`; пути не переписываются, WebSocket Upgrade передаётся.
+- `/internal` и `/internal/*` возвращают `404`.
+- Статика читается из `/var/www/klan`; маршруты приложения возвращают `index.html`. Отсутствующие `/assets/*` возвращают `404`.
+- `index.html` получает `Cache-Control: no-cache`; маркеры публикации — `no-store`, хешированные assets — длительный immutable cache.
 
-В backend установите `APP_ORIGIN=https://ВАШ-ДОМЕН` без завершающего `/`. Браузер использует cookie и WebSocket на том же origin. У backend остаётся один доверенный proxy hop. nginx заменяет `X-Forwarded-For` адресом своего клиента, а не принимает входящий заголовок на веру. Дополнительный CDN или балансировщик перед nginx потребует отдельной настройки доверия; эта схема предполагает прямое подключение клиента к nginx.
+В backend установите `APP_ORIGIN=https://ВАШ-ДОМЕН` без завершающего `/`. Браузер использует относительный `/api` и WebSocket на том же origin; production build не требует API URL. `VITE_API_TARGET` относится к локальному dev-прокси. У backend остаётся один доверенный proxy hop: nginx заменяет `X-Forwarded-For` адресом своего клиента. Дополнительный CDN или балансировщик потребует отдельной настройки доверия.
 
 ## GitHub environment `production`
 
-В репозитории создайте Settings → Environments → `production` и добавьте secrets:
+В репозитории создайте **Settings → Environments → production**. Разрешите deployment только из `main`; выключите required reviewers и wait timer, чтобы успешные проверки автоматически приводили к публикации.
+
+Добавьте пять **Environment secrets**:
 
 | Secret | Значение |
 | --- | --- |
-| `DEPLOY_HOST` | Адрес подготовленного VPS |
+| `DEPLOY_HOST` | DNS-имя или IPv4 подготовленного VPS |
 | `DEPLOY_PORT` | SSH-порт, обычно `22` |
-| `DEPLOY_USER` | Пользователь деплоя из общего руководства |
-| `DEPLOY_SSH_KEY` | Его закрытый SSH-ключ для Actions |
-| `DEPLOY_KNOWN_HOSTS` | Проверенная запись ключа хоста; для нестандартного порта формат `[host]:port` |
-| `PRODUCTION_ENV` | Содержимое [Docker/.env.production.example](../Docker/.env.production.example), включая комментарий, если дополнительных настроек нет |
+| `DEPLOY_USER` | Подготовленный пользователь, обычно `deploy` |
+| `DEPLOY_SSH_KEY` | Полный приватный SSH-ключ для Actions |
+| `DEPLOY_KNOWN_HOSTS` | Проверенная запись ключа хоста; для нестандартного порта — `[host]:port` |
 
-Ключ хоста проверьте по доверенному каналу администратора VPS. Секрет `PRODUCTION_ENV` содержит raw-строки `KEY=value`, без `export`, кавычек вокруг значения и подстановок shell. Знаки `$` и кавычки сохраняются буквально. Фронтенду сейчас не нужны дополнительные значения: достаточно комментария из примера. Не копируйте сюда секреты backend, базу или Telegram token. `KLAN_DOMAIN=:80`, `API_UPSTREAM=api:3001` и `FRONTEND_ROOT=/srv` фиксированы в Compose; `IMAGE_REF` задаёт workflow.
+В том же environment добавьте публичную **Variable** `PRODUCTION_URL`, например `https://klan.example.org`. Это HTTPS origin без пути, query и fragment; завершающий `/` допустим. Значение используется для проверки именно опубликованного сайта. Domain/TLS и nginx должны быть готовы до первого запуска workflow.
 
-Нужен Docker Compose **2.30.0+** для `env_file.format: raw`; на VPS должны быть `curl` и общие инструменты из руководства backend. Workflow передаёт временный `GITHUB_TOKEN` серверу через stdin, использует отдельный `DOCKER_CONFIG` и удаляет его после скачивания образа; постоянная авторизация GHCR на VPS не нужна. Публикация образа выполняется GitHub Actions с правами пакетов своего репозитория.
+Ключ SSH-хоста сверяйте через доверенный канал администратора. Скрипт включает `StrictHostKeyChecking=yes`, использует только переданный ключ и не доверяет серверу через динамический `ssh-keyscan`.
 
-Workflow `Production` запускается при изменениях в `main`; ручной запуск выполняйте для `main`. Разрешите в environment только ветку `main`. Для автоматического деплоя без ручных подтверждений не включайте required reviewers и wait timer в environment `production`.
+Frontend не требует `PRODUCTION_ENV`, runtime-секретов, registry token или `IMAGE_REF`. Старые значения этих secrets workflow больше не читает. Не передавайте сюда секреты API, базы или Telegram. Все `VITE_*` публичны и могут попасть в сборку.
 
 ## Первичная настройка nginx и HTTPS
 
-Команды ниже предназначены для администратора Debian/Ubuntu VPS. Выполняйте их после общей подготовки сервера. Замените **все** `klan.example.org` и `admin@example.org` своими значениями, направьте DNS A/AAAA на VPS и откройте TCP 80/443. Не публикуйте 8088 и 3101 наружу. На сервере должны быть установлены nginx и Certbot по инструкции вашей ОС.
+Команды предназначены для администратора Debian/Ubuntu VPS после общего setup. Замените **все** `klan.example.org` и `admin@example.org`, направьте DNS A/AAAA на VPS и откройте TCP 80/443. Не публикуйте порт API 3101 наружу. nginx и Certbot должны быть установлены по инструкции ОС. Не меняйте virtual hosts других проектов.
 
-Сначала используйте HTTP-конфигурацию без ссылок на ещё не выпущенный сертификат:
+Для нового домена сначала установите HTTP-конфигурацию без ссылок на ещё не выпущенный сертификат:
 
 ```sh
 sudo install -d -m 0755 /var/www/letsencrypt/.well-known/acme-challenge
@@ -58,7 +73,7 @@ sudo certbot certonly --webroot -w /var/www/letsencrypt \
   -d klan.example.org --email admin@example.org --agree-tos --non-interactive
 ```
 
-Убедитесь, что другой виртуальный хост не обслуживает тот же домен. После успешной выдачи сертификата подготовьте копию [Deploy/nginx.production.conf](../Deploy/nginx.production.conf), замените в ней все вхождения домена, включая пути сертификатов, и установите её вместо HTTP-конфигурации:
+Убедитесь, что другой virtual host не обслуживает тот же домен. После выдачи сертификата подготовьте копию [Deploy/nginx.production.conf](../Deploy/nginx.production.conf), замените все вхождения домена, включая пути сертификатов, и установите её:
 
 ```sh
 # /tmp/klan-frontend.nginx.conf — подготовленная копия с вашим доменом.
@@ -66,7 +81,9 @@ sudo install -m 0644 /tmp/klan-frontend.nginx.conf /etc/nginx/sites-available/kl
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Настройте перезагрузку nginx после обновления сертификата:
+Если домен уже обслуживает прежний frontend-контейнер, не заменяйте работающий vhost временным `503`: используйте существующий сертификат и порядок миграции ниже. На новом пустом сайте до первой публикации отсутствие `index.html` ожидаемо; workflow сначала записывает сборку, затем проверяет её через HTTPS.
+
+Настройте reload nginx после обновления сертификата:
 
 ```sh
 sudo install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
@@ -78,39 +95,105 @@ sudo chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/reload-klan-nginx
 sudo certbot renew --dry-run
 ```
 
-Проверьте, что установленный Certbot запускает автоматическое обновление через timer или cron. Публичный HTTP после установки основной конфигурации перенаправляется на HTTPS; ACME challenge остаётся доступен на 80. nginx на хосте не меняется при каждом релизе приложения; обновления этого шаблона применяются администратором отдельно.
+Проверьте автоматическое обновление Certbot через timer или cron. HTTP перенаправляется на HTTPS, ACME challenge остаётся доступен на 80. Workflow не устанавливает и не перезагружает nginx; изменения шаблона администратор применяет отдельно.
 
-## Релиз и проверка
+## Переход с ранее опубликованного frontend-контейнера
 
-Каждый релиз хранится в `/opt/klan/frontend/releases/<SHA>-<run>-<attempt>/` и содержит `Docker/compose.production.yaml`, сценарии `Deploy/*.sh`, `runtime.env` и метаданные образа. Параметры и история релизов не входят в Git. Общий серверный сценарий сериализует деплои, скачивает образ, проверяет конфигурацию до замены контейнера, запускает сервис и только после проверки атомарно обновляет ссылки `current`/`previous`. При ошибке используется предыдущий релиз и его образ. Это обновление одного контейнера с возможным коротким перерывом, не схема безостановочного переключения.
+Этот раздел нужен только для работающей старой схемы `klan-frontend-production`, где nginx проксирует UI на `127.0.0.1:8088`. Сначала выполните общий setup и подготовьте новую nginx-конфигурацию. Новый workflow запускайте после переключения nginx на статику. Старый контейнер оставьте работающим до успешной проверки перехода.
 
-Ручной откат выполняется на VPS от пользователя деплоя:
+От имени пользователя deploy найдите единственный старый frontend-контейнер и скопируйте его текущую статику в **пустой** новый web-root. Следующий блок не перезаписывает уже настроенную статическую публикацию:
 
-```sh
-bash /opt/klan/frontend/current/Deploy/server-release.sh rollback
+```bash
+set -euo pipefail
+old_container=$(docker ps \
+  --filter label=com.docker.compose.project=klan-frontend-production \
+  --filter label=com.docker.compose.service=frontend --format '{{.ID}}')
+[[ "$old_container" =~ ^[a-f0-9]+$ ]]
+test ! -e /opt/klan/frontend/static-current
+test ! -L /opt/klan/frontend/static-current
+test -z "$(find /var/www/klan -mindepth 1 -maxdepth 1 ! -name .well-known -print -quit)"
+migration_dir=$(mktemp -d /opt/klan/frontend/migration-XXXXXX)
+docker cp "$old_container:/srv/." "$migration_dir/"
+test -f "$migration_dir/index.html"
+test -z "$(find "$migration_dir" ! -type f ! -type d -print -quit)"
+test -z "$(find "$migration_dir" -mindepth 1 -name '.*' -print -quit)"
+rsync --archive --checksum --exclude='.well-known/' \
+  --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$migration_dir/" /var/www/klan/
 ```
 
-Откат использует сохранённый локальный образ предыдущего релиза и не обращается к GHCR. Не удаляйте образы и каталоги `current`/`previous`, пока они нужны для восстановления.
-
-`Deploy/service.sh` предоставляет hooks общему сценарию:
-
-1. `service_preflight` запускает `caddy validate` в одноразовом контейнере без публикации портов.
-2. `service_start` запускает только `frontend` через `compose up -d --no-build --wait --wait-timeout 120`.
-3. `service_verify` проверяет через loopback главную страницу, прямой SPA-адрес `/users/1`, 404 для `/internal` и вложенного адреса. Healthcheck контейнера также проверяет HTML приложения.
-4. `service_stop` останавливает только frontend этого Compose-проекта; backend, bot и общую сеть он не останавливает.
-
-После первого запуска проверьте внешний адрес:
+Сохраните прежний vhost и установите подготовленный static-шаблон с тем же доменом и сертификатом:
 
 ```sh
-curl --fail --show-error https://klan.example.org/
+sudo cp -p /etc/nginx/sites-available/klan-frontend /opt/klan/frontend/nginx.before-static.conf
+sudo install -m 0644 /tmp/klan-frontend.nginx.conf /etc/nginx/sites-available/klan-frontend
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+В той же shell-сессии проверьте, что публичный адрес отдаёт ровно перенесённый `index.html`, и что API и SPA-маршрут доступны:
+
+```bash
+curl --fail --silent --show-error --max-time 20 \
+  https://klan.example.org/ -o "$migration_dir/published-index.html"
+expected=$(sha256sum /var/www/klan/index.html)
+actual=$(sha256sum "$migration_dir/published-index.html")
+test "${expected%% *}" = "${actual%% *}"
+curl --fail --show-error https://klan.example.org/users/1 >/dev/null
+curl --fail --show-error https://klan.example.org/api/health
+```
+
+Если проверка не прошла, восстановите `/opt/klan/frontend/nginx.before-static.conf` в прежний vhost, выполните `nginx -t` и reload: старый контейнер всё ещё работает. После успешного переключения запустите новый workflow **Production** и дождитесь зелёного результата. Только затем остановите сохранённый контейнер командой `docker stop "$old_container"`. Не выполняйте общий `compose down` и не удаляйте volumes других компонентов.
+
+Первая статическая публикация сама сохранит перенесённые файлы как bootstrap-релиз. Старые контейнерные ссылки `current`/`previous` не используются и не перезаписываются: новая схема ведёт отдельные `static-current`/`static-previous`. Автоматизация прежнего контейнерного способа после перехода больше не должна запускаться.
+
+## Выпуск и проверка
+
+Push или merge в `main` запускает **Production**. Pull request выполняет только проверки. Для повторного выпуска выберите **Actions → Production → Run workflow → main**. Уже устаревший запуск отклоняется, если вершина `main` изменилась. GitHub concurrency и серверный `flock` сериализуют публикации.
+
+CI выполняет `npm test`, `npm run build`, проверку Bash/ShellCheck и deployment-тесты. [Deploy/package.sh](../Deploy/package.sh) добавляет в готовую сборку `deploy-version.txt` с 40-символьным SHA и `deploy-site.txt` со значением `klan-frontend`, затем создаёт `frontend.tar.gz` и `frontend.tar.gz.sha256`. Checksum-файл содержит только 64 hex-символа и перевод строки. GitHub artifact хранится 14 дней.
+
+[Deploy/deploy.sh](../Deploy/deploy.sh) проверяет checksum до передачи и отправляет архив, сценарий и метаданные по SSH. [Deploy/server-release.sh](../Deploy/server-release.sh) повторно проверяет SHA256, имена и типы файлов архива; симлинки, специальные файлы и выход за каталог отклоняются. В приватном релизе создаются `public/`, `Deploy/server-release.sh`, `kind=static`, `commit` и `production-url`.
+
+Публикация переносит только `public/` в web-root через `rsync --checksum --delete-after --delay-updates` с правами чтения для nginx. `.well-known/` сохраняется. Затем сервер по публичному HTTPS проверяет маркеры сайта/версии и совпадение `index.html` на `/` и `/users/1`. Только успешная проверка переключает `static-current` и `static-previous`. Это обновление файлов; атомарное переключение всех assets одновременно не обещается.
+
+Проверьте первый выпуск снаружи:
+
+```sh
+curl --fail --show-error https://klan.example.org/deploy-site.txt
+curl --fail --show-error https://klan.example.org/deploy-version.txt
 curl --fail --show-error https://klan.example.org/users/1
 curl --fail --show-error https://klan.example.org/api/health
 curl --silent --output /dev/null --write-out '%{http_code}\n' https://klan.example.org/internal
 curl --silent --output /dev/null --write-out '%{http_code}\n' https://klan.example.org/internal/health
 ```
 
-Последние два запроса должны вернуть `404`. В браузере отдельно проверьте вход и авторизованное соединение `wss://ВАШ-ДОМЕН/ws`. Автоматическая проверка статического контейнера не подтверждает работоспособность API, внешнего TLS, DNS или Telegram-входа. Не используйте реальные сообщения Telegram и изменения данных для проверки без отдельного разрешения.
+Маркеры должны содержать `klan-frontend` и SHA опубликованного коммита, последние два запроса — вернуть `404`. Проверка статической публикации не подтверждает Telegram-вход и авторизованный WebSocket; их проверяют отдельно обычным пользовательским сценарием, без изменения реальных данных ради теста.
 
-Локальные проверки из `Project/`: `npm test`, `npm run build`. Из корня репозитория: `bash -n Deploy/service.sh` и `bash Scripts/test-deployment-service.sh`. Последний тест подменяет Compose и HTTP-запросы и проверяет передачу ошибок, SPA-маршруты и запрет внутренних адресов, не обращаясь к серверу.
+## Восстановление и ручной rollback
 
-Официальные справочники: [Compose env_file](https://docs.docker.com/reference/compose-file/services/#env_file), [nginx WebSocket](https://nginx.org/en/docs/http/websocket.html), [Certbot webroot и обновление](https://eff-certbot.readthedocs.io/en/stable/using.html#webroot).
+Если передача, checksum или распаковка не прошли, опубликованные файлы не меняются. При ошибке после начала публикации сценарий восстанавливает предыдущую статику, проверяет её и возвращает прежние ссылки. Workflow остаётся красным даже после успешного восстановления. Если восстановление не удалось, журнал содержит `ROLLBACK FAILED`.
+
+Перед первым выпуском автоматически сохраняется bootstrap-снимок web-root; `kind=bootstrap` не требует маркеров версии. При наличии старого `index.html` его восстановление проверяется через HTTPS, для изначально пустого сайта сравниваются восстановленные файлы. Таким образом, неудачный первый выпуск может вернуть прежний пустой сайт, а не рабочую новую версию.
+
+Ручной откат выполняется на VPS пользователем deploy:
+
+```sh
+bash /opt/klan/frontend/static-current/Deploy/server-release.sh rollback
+```
+
+Команда публикует `static-previous`, проверяет результат и после успеха меняет ссылки местами. Пересборка, GitHub и registry не нужны; нужен доступ к публичному HTTPS-адресу для проверки. Откат меняет только статику frontend, не nginx, backend, bot или базу. Следующий merge снова запускает обычную публикацию, поэтому исправьте причину ошибки либо сделайте revert в Git.
+
+Сценарии не удаляют автоматически incoming, releases и bootstrap-снимки. Контролируйте диск и сохраняйте как минимум текущий и предыдущий статические релизы. Не удаляйте старые контейнерные каталоги/секреты, пока отдельно не решили вопрос их хранения. Web-root не предназначен для ручных правок: следующий выпуск заменит публичные файлы, кроме `.well-known/`.
+
+## Локальные проверки
+
+Из `Project/`: `npm test`, `npm run build`. Из корня репозитория:
+
+```sh
+for script in Deploy/*.sh; do bash -n "$script"; done
+shellcheck Deploy/*.sh
+node --test Deploy/*.test.mjs
+```
+
+Deployment-тесты используют изолированные файлы и подставные команды, без реального VPS или Telegram. Конфигурацию nginx проверяйте через `nginx -t`; HTTP-проверка с временной копией конфига и подставным API может выполняться на loopback.
+
+Справочники: [nginx WebSocket](https://nginx.org/en/docs/http/websocket.html), [Certbot webroot и обновление](https://eff-certbot.readthedocs.io/en/stable/using.html#webroot).

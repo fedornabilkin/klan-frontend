@@ -1,233 +1,284 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-// The real transport and server scripts run against disposable files and command doubles.
-// No Docker daemon, SSH connection, registry, Telegram token or application database is used.
 const deployDirectory = dirname(fileURLToPath(import.meta.url));
-const bash = process.env.DEPLOY_TEST_BASH || (process.platform === 'win32'
-  ? 'C:/Program Files/Git/bin/bash.exe'
-  : 'bash');
+const bash = process.env.DEPLOY_TEST_BASH || (process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash');
 const bashEnvironment = { ...process.env, MSYS: 'winsymlinks:lnk' };
 const probe = spawnSync(bash, ['--version'], { env: bashEnvironment, encoding: 'utf8' });
-const unavailable = probe.status !== 0
-  ? 'Bash is unavailable; run on Linux or allow Git Bash to start on Windows'
-  : false;
-const oldId = `${'a'.repeat(40)}-1-1`;
-const newId = `${'b'.repeat(40)}-2-1`;
+const unavailable = probe.status !== 0 ? 'Bash unavailable; run on Linux or allow Git Bash on Windows' : false;
+const realRsync = process.env.DEPLOY_TEST_RSYNC ? shellPath(process.env.DEPLOY_TEST_RSYNC)
+  : spawnSync(bash, ['-c', 'command -v rsync'], { env: bashEnvironment, encoding: 'utf8' }).stdout?.trim() || '';
+const oldSha = 'a'.repeat(40), newSha = 'b'.repeat(40);
+const oldId = oldSha + '-1-1', newId = newSha + '-2-1';
 
 function shellPath(value) {
   const absolute = resolve(value).replaceAll('\\', '/');
-  return process.platform === 'win32'
-    ? absolute.replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`)
-    : absolute;
+  return process.platform === 'win32' ? absolute.replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase()) : absolute;
 }
-
 function write(path, content) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content, { mode: 0o700 });
+  writeFileSync(path, content, { mode: 0o600 });
 }
+// HTTP is always fake. Linux uses real rsync when installed; Windows uses this mirror.
+const helper = [
+  "import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, rmSync, cpSync, chmodSync } from 'node:fs';",
+  "import { join, resolve, relative } from 'node:path';",
+  "const args=process.argv.slice(3), command=process.argv[2], web=process.env.TEST_WEB;",
+  "const root=resolve(process.env.TEST_ROOT);",
+  "function confined(path) { const value=resolve(path); if (relative(root,value).startsWith('..')) throw Error('Outside test fixture'); return value; }",
+  "function files(dir,prefix='') { if(!existsSync(dir)) return []; return readdirSync(dir,{withFileTypes:true}).filter(e=>e.name!=='.well-known').flatMap(e=>e.isDirectory()?files(join(dir,e.name),prefix+e.name+'/'):[[prefix+e.name,readFileSync(join(dir,e.name)).toString('base64')]]).sort(); }",
+  "if(command==='curl') {",
+  " const output=args[args.indexOf('--output')+1], url=new URL(args.at(-1)), isNew=url.search.includes(process.env.TEST_NEW_ID);",
+  " let path=url.pathname; const key=path==='/deploy-version.txt'?'version':path==='/deploy-site.txt'?'site':path==='/users/1'?'deep':'root';",
+  " if(isNew && process.env.FAIL_HTTP===key) { writeFileSync(output,'wrong frontend response'); process.exit(0); }",
+  " if(path==='/' || path==='/users/1') path='/index.html';",
+  " try { writeFileSync(output,readFileSync(join(web,path.slice(1)))); } catch { process.exit(22); }",
+  "} else if(command==='rsync') {",
+  " const source=confined(args.at(-2)), target=confined(args.at(-1));",
+  " if(args.includes('--dry-run')) { if(JSON.stringify(files(source))!==JSON.stringify(files(target))) process.stdout.write('changed\\n'); process.exit(0); }",
+  " mkdirSync(target,{recursive:true});",
+  " if(process.env.FAIL_PUBLISH==='yes' && source.includes(process.env.TEST_NEW_ID)) { writeFileSync(join(target,'index.html'),'partial upload'); process.exit(23); }",
+  " if(args.includes('--delete-after')) for(const name of readdirSync(target)) if(name!=='.well-known') rmSync(join(target,name),{recursive:true,force:true});",
+  " for(const name of readdirSync(source)) if(name!=='.well-known') cpSync(join(source,name),join(target,name),{recursive:true});",
+  " if(args.some(a=>a.startsWith('--chmod='))) {",
+  "  const modes=dir=>{ chmodSync(dir,0o755); for(const e of readdirSync(dir,{withFileTypes:true})) { if(e.name==='.well-known') continue; const p=join(dir,e.name); if(e.isDirectory()) modes(p); else chmodSync(p,0o644); } }; modes(target);",
+  " }",
+  "} else throw Error('Unknown fake command');",
+].join('\n');
 
 function harness(context, { previous = true } = {}) {
-  const temporary = mkdtempSync(join(tmpdir(), 'klan-deployment-test-'));
-  context.after(() => rmSync(temporary, { recursive: true, force: true }));
-  const root = join(temporary, 'klan', 'backend');
-  const bin = join(temporary, 'bin');
-  const log = join(temporary, 'calls.log');
-  const environment = {
-    ...bashEnvironment,
-    TEST_BIN: shellPath(bin),
-    TEST_LOG: shellPath(log),
-    FAIL_PREFLIGHT: '', FAIL_START: '', FAIL_VERIFY: '', FAIL_STOP: '', FAIL_PULL: '',
-  };
-  write(join(bin, 'docker'), `#!/usr/bin/env bash
-set -euo pipefail
-if [[ "$*" == 'compose version --short' ]]; then printf '2.30.0\\n'; exit 0; fi
-if [[ "$1" == login ]]; then cat >/dev/null; printf 'docker:login\\n' >> "$TEST_LOG"; exit 0; fi
-if [[ "$1" == pull ]]; then printf 'docker:pull\\n' >> "$TEST_LOG"; [[ "$FAIL_PULL" != yes ]]; exit; fi
-if [[ "$1" == image && "$2" == inspect ]]; then exit 0; fi
-if [[ "$1" == compose ]]; then printf 'docker:config\\n' >> "$TEST_LOG"; exit 0; fi
-printf 'Unexpected mocked Docker command\\n' >&2; exit 98
-`);
-  for (const command of ['flock', 'curl']) write(join(bin, command), '#!/usr/bin/env bash\nexit 0\n');
-  write(join(bin, 'ssh'), '#!/usr/bin/env bash\nprintf "unexpected:ssh\\n" >> "$TEST_LOG"\nexit 99\n');
-  const service = `#!/usr/bin/env bash
-record_hook() { printf '%s:%s\\n' "$1" "$(cat "$release_dir/fixture-name")" >> "$TEST_LOG"; }
-service_preflight() { record_hook preflight; [[ "$FAIL_PREFLIGHT" != "$(cat "$release_dir/fixture-name")" ]]; }
-service_start() { record_hook start; [[ "$FAIL_START" != "$(cat "$release_dir/fixture-name")" ]]; }
-service_verify() { record_hook verify; [[ "$FAIL_VERIFY" != "$(cat "$release_dir/fixture-name")" ]]; }
-service_stop() { record_hook stop; [[ "$FAIL_STOP" != "$(cat "$release_dir/fixture-name")" ]]; }
-`;
+  const temporary = mkdtempSync(join(tmpdir(), 'klan-static-deploy-'));
+  context.after(() => {
+    assert.ok(resolve(temporary).startsWith(resolve(tmpdir()) + sep));
+    rmSync(temporary, { recursive: true, force: true });
+  });
+  const root = join(temporary, 'opt', 'klan', 'frontend'), web = join(temporary, 'var', 'www', 'klan');
+  const bin = join(temporary, 'bin'), incoming = join(root, 'incoming', newId);
+  mkdirSync(join(root, 'releases'), { recursive: true });
+  mkdirSync(web, { recursive: true });
   const server = readFileSync(join(deployDirectory, 'server-release.sh'), 'utf8')
-    .replaceAll('/opt/klan/', `${shellPath(temporary)}/klan/`);
-  for (const [id, label, digest] of [[oldId, 'old', 'c'], [newId, 'new', 'd']]) {
-    const release = join(root, 'releases', id);
-    write(join(release, 'Deploy', 'server-release.sh'), server);
-    write(join(release, 'Deploy', 'service.sh'), service);
-    write(join(release, 'Docker', 'compose.production.yaml'), 'services: {}\n');
-    write(join(release, 'runtime.env'), 'SYNTHETIC_CONFIGURATION=only\n');
-    write(join(release, 'image-ref'), `ghcr.io/example/klan-backend@sha256:${digest.repeat(64)}\n`);
-    write(join(release, 'fixture-name'), label);
+    .replaceAll('/opt/klan/frontend', shellPath(root)).replaceAll('/var/www/klan', shellPath(web));
+  write(join(incoming, 'Deploy', 'server-release.sh'), server);
+  write(join(incoming, 'commit'), newSha + '\n');
+  write(join(incoming, 'production-url'), 'https://klan.example.test\n');
+  const helperPath = join(temporary, 'helper.mjs');
+  write(helperPath, helper);
+  for (const command of ['curl', 'rsync']) {
+    let body = '#!/usr/bin/env bash\n';
+    if (command === 'rsync') body += 'if [[ -n "$REAL_RSYNC" && "$FAIL_PUBLISH" != yes ]]; then exec "$REAL_RSYNC" "$@"; fi\n';
+    body += 'exec "$TEST_NODE" "$TEST_HELPER" ' + command + ' "$@"\n';
+    write(join(bin, command), body);
   }
-  function command(script, args = [], extra = {}, input = '') {
-    return spawnSync(bash, ['-c', 'export PATH="$TEST_BIN:$PATH"; exec bash "$@"', 'test', shellPath(script), ...args], {
-      env: { ...environment, ...extra }, input, encoding: 'utf8', timeout: 15_000,
-    });
-  }
+  write(join(bin, 'flock'), '#!/usr/bin/env bash\nexit 0\n');
+  write(join(bin, 'ssh'), '#!/usr/bin/env bash\nprintf unexpected-ssh >&2\nexit 99\n');
+  const chmod = spawnSync(bash, ['-c', 'chmod +x "$1"/*', 'test', shellPath(bin)], { env: bashEnvironment, encoding: 'utf8' });
+  assert.equal(chmod.status, 0, chmod.stderr);
+  const environment = {
+    ...bashEnvironment, TEST_BIN: shellPath(bin), TEST_NODE: shellPath(process.execPath),
+    TEST_HELPER: shellPath(helperPath), TEST_WEB: web, TEST_ROOT: temporary,
+    TEST_NEW_ID: newId, REAL_RSYNC: realRsync, FAIL_HTTP: '', FAIL_PUBLISH: '',
+  };
   function shell(code, args = []) {
-    const result = spawnSync(bash, ['-c', code, 'test', ...args], {
-      env: environment, encoding: 'utf8', timeout: 15_000,
-    });
+    const result = spawnSync(bash, ['-c', code, 'test', ...args], { env: environment, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 0, result.stderr || result.error?.message);
     return result.stdout.trim();
   }
-  function link(name, id) {
-    shell('ln -s -- "$1" "$2"; test -L "$2"', [`releases/${id}`, shellPath(join(root, name))]);
+  function command(path, args = [], extra = {}) {
+    return spawnSync(bash, ['-c', 'export PATH="$TEST_BIN:$PATH"; exec bash "$@"', 'test', shellPath(path), ...args], {
+      env: { ...environment, ...extra }, encoding: 'utf8', timeout: 30_000,
+    });
   }
-  if (previous) link('current', oldId);
+  function publicFiles(directory, sha, label) {
+    write(join(directory, 'index.html'), '<html><div id="app">' + label + '</div></html>\n');
+    write(join(directory, 'deploy-version.txt'), sha + '\n');
+    write(join(directory, 'deploy-site.txt'), 'klan-frontend\n');
+    write(join(directory, 'assets', label + '.js'), 'static ' + label + '\n');
+    for (const file of ['index.html', 'deploy-version.txt', 'deploy-site.txt']) utimesSync(join(directory, file), 1_700_000_000, 1_700_000_000);
+  }
+  const source = join(temporary, 'dist');
+  publicFiles(source, newSha, 'new');
+  function checksum() {
+    write(join(incoming, 'frontend.tar.gz.sha256'), createHash('sha256').update(readFileSync(join(incoming, 'frontend.tar.gz'))).digest('hex') + '\n');
+  }
+  function archive(options = []) {
+    shell('tar -C "$1" -czf "$2" "${@:3}" .', [shellPath(source), shellPath(join(incoming, 'frontend.tar.gz')), ...options]);
+    checksum();
+  }
+  archive();
+  const old = join(root, 'releases', oldId);
+  if (previous) {
+    publicFiles(join(old, 'public'), oldSha, 'old');
+    write(join(old, 'Deploy', 'server-release.sh'), server);
+    write(join(old, 'kind'), 'static\n');
+    write(join(old, 'commit'), oldSha + '\n');
+    write(join(old, 'production-url'), 'https://klan.example.test\n');
+    publicFiles(web, oldSha, 'old');
+    shell('ln -s "$1" "$2"', ['releases/' + oldId, shellPath(join(root, 'static-current'))]);
+  } else write(join(web, 'index.html'), 'Original website\n');
+  write(join(web, '.well-known', 'keep.txt'), 'ACME content\n');
   return {
-    root,
-    log: () => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [],
-    hooks: () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [])
-      .filter((line) => /^(preflight|start|verify|stop):/.test(line)),
-    current: () => shell('if test -L "$1"; then readlink "$1"; fi', [shellPath(join(root, 'current'))]),
-    previous: () => shell('if test -L "$1"; then readlink "$1"; fi', [shellPath(join(root, 'previous'))]),
-    link,
-    command,
-    deploy: (extra = {}) => command(join(root, 'releases', newId, 'Deploy', 'server-release.sh'), ['deploy', 'example'], extra, 'fake-short-lived-token\n'),
+    temporary, root, web, source, incoming, old, shell, command, checksum, archive,
+    deploy: (extra = {}) => command(join(incoming, 'Deploy', 'server-release.sh'), ['deploy'], extra),
     rollback: (extra = {}) => command(join(root, 'releases', newId, 'Deploy', 'server-release.sh'), ['rollback'], extra),
+    current: () => shell('if test -L "$1"; then readlink "$1"; fi', [shellPath(join(root, 'static-current'))]),
+    previous: () => shell('if test -L "$1"; then readlink "$1"; fi', [shellPath(join(root, 'static-previous'))]),
+    version: () => readFileSync(join(web, 'deploy-version.txt'), 'utf8').trim(),
   };
 }
 
+test('verified archive copies same-size/mtime files, preserves ACME and rolls back', { skip: unavailable }, (context) => {
+  const f = harness(context), result = f.deploy();
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.equal(f.version(), newSha);
+  assert.equal(f.current(), 'releases/' + newId);
+  assert.equal(f.previous(), 'releases/' + oldId);
+  assert.ok(existsSync(join(f.web, 'assets/new.js')));
+  assert.equal(existsSync(join(f.web, 'assets/old.js')), false);
+  assert.equal(readFileSync(join(f.web, '.well-known/keep.txt'), 'utf8'), 'ACME content\n');
+  assert.equal(existsSync(join(f.web, 'Deploy')), false);
+  assert.equal(existsSync(join(f.web, 'production-url')), false);
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(f.web).mode & 0o777, 0o755);
+    assert.equal(statSync(join(f.web, 'assets')).mode & 0o777, 0o755);
+    assert.equal(statSync(join(f.web, 'index.html')).mode & 0o777, 0o644);
+  }
+  const rollback = f.rollback();
+  assert.equal(rollback.status, 0, rollback.stderr);
+  assert.equal(f.version(), oldSha);
+  assert.equal(f.current(), 'releases/' + oldId);
+  assert.equal(f.previous(), 'releases/' + newId);
+  assert.ok(existsSync(join(f.web, 'assets/old.js')));
+  assert.equal(existsSync(join(f.web, 'assets/new.js')), false);
+});
+for (const failure of ['version', 'site', 'root', 'deep']) {
+  test('wrong HTTP ' + failure + ' restores files and state', { skip: unavailable }, (context) => {
+    const f = harness(context), result = f.deploy({ FAIL_HTTP: failure });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Previous frontend restored/);
+    assert.equal(f.version(), oldSha);
+    assert.equal(f.current(), 'releases/' + oldId);
+    assert.equal(f.previous(), '');
+  });
+}
+test('partial first publication restores the original site and preserves ACME', { skip: unavailable }, (context) => {
+  const f = harness(context, { previous: false }), result = f.deploy({ FAIL_PUBLISH: 'yes' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Previous frontend restored/);
+  assert.equal(readFileSync(join(f.web, 'index.html'), 'utf8'), 'Original website\n');
+  assert.equal(existsSync(join(f.web, 'deploy-version.txt')), false);
+  assert.equal(f.current(), '');
+  assert.ok(existsSync(join(f.web, '.well-known/keep.txt')));
+});
+test('historic Docker links and runtime.env stay outside the web root', { skip: unavailable }, (context) => {
+  const f = harness(context, { previous: false });
+  const legacy = join(f.root, 'releases', 'c'.repeat(40) + '-0-1');
+  write(join(legacy, 'runtime.env'), 'SYNTHETIC_PRIVATE_VALUE=keep-private\n');
+  f.shell('ln -s "$1" "$2"', ['releases/' + 'c'.repeat(40) + '-0-1', shellPath(join(f.root, 'current'))]);
+  const result = f.deploy();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(f.web, 'runtime.env')), false);
+  assert.equal(readFileSync(join(legacy, 'runtime.env'), 'utf8'), 'SYNTHETIC_PRIVATE_VALUE=keep-private\n');
+  assert.match(f.previous(), /^releases\/bootstrap-/);
+  const rollback = f.rollback();
+  assert.equal(rollback.status, 0, rollback.stderr);
+  assert.equal(readFileSync(join(f.web, 'index.html'), 'utf8'), 'Original website\n');
+});
+test('failed publication restores an initially empty static root', { skip: unavailable }, (context) => {
+  const f = harness(context, { previous: false });
+  rmSync(join(f.web, 'index.html'));
+  const result = f.deploy({ FAIL_PUBLISH: 'yes' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Previous frontend restored/);
+  assert.equal(existsSync(join(f.web, 'index.html')), false);
+  assert.equal(f.current(), '');
+  assert.ok(existsSync(join(f.web, '.well-known/keep.txt')));
+});
+test('a foreign current link is rejected before publication', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  f.shell('rm -- "$1"; ln -s "$2" "$1"', [shellPath(join(f.root, 'static-current')), shellPath(f.source)]);
+  const result = f.deploy();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Invalid static-current/);
+  assert.equal(f.version(), oldSha);
+});
+test('rollback without a previous static release keeps the current site intact', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  const result = f.command(join(f.old, 'Deploy/server-release.sh'), ['rollback']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /No previous static release/);
+  assert.equal(f.version(), oldSha);
+});
+test('checksum mismatch is rejected before publishing', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  write(join(f.incoming, 'frontend.tar.gz.sha256'), '0'.repeat(64) + '\n');
+  const result = f.deploy();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /checksum mismatch/);
+  assert.equal(f.version(), oldSha);
+});
+test('path traversal is rejected before extraction', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  f.archive(['--transform=s,index.html,../escape.html,']);
+  const result = f.deploy();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unsafe path/);
+  assert.equal(f.version(), oldSha);
+  assert.equal(existsSync(join(f.root, 'releases/escape.html')), false);
+});
+test('symlinks are rejected before extraction', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  f.shell('ln -s index.html "$1"', [shellPath(join(f.source, 'linked.html'))]);
+  f.archive();
+  const result = f.deploy();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /link or special file/);
+  assert.equal(f.version(), oldSha);
+});
+test('archive version must match the requested commit', { skip: unavailable }, (context) => {
+  const f = harness(context);
+  write(join(f.source, 'deploy-version.txt'), oldSha + '\n');
+  f.archive();
+  const result = f.deploy();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /expected frontend build/);
+  assert.equal(f.version(), oldSha);
+});
+test('packaging creates checksum and refuses hidden configuration', { skip: unavailable }, (context) => {
+  const f = harness(context), artifact = join(f.temporary, 'artifact');
+  let result = f.command(join(deployDirectory, 'package.sh'), [shellPath(f.source), shellPath(artifact)], { GITHUB_SHA: newSha });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(artifact, 'frontend.tar.gz.sha256'), 'utf8').trim(), createHash('sha256').update(readFileSync(join(artifact, 'frontend.tar.gz'))).digest('hex'));
+  write(join(f.source, '.env'), 'SYNTHETIC_SECRET=not-for-browser\n');
+  result = f.command(join(deployDirectory, 'package.sh'), [shellPath(f.source), shellPath(artifact)], { GITHUB_SHA: newSha });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /hidden file/);
+});
 const transportEnvironment = {
   DEPLOY_HOST: 'server.example.test', DEPLOY_PORT: '22', DEPLOY_USER: 'deploy',
   DEPLOY_SSH_KEY: 'synthetic-key', DEPLOY_KNOWN_HOSTS: 'synthetic-host-key',
-  PRODUCTION_ENV: 'EXAMPLE=value', KLAN_COMPONENT: 'backend',
-  IMAGE_REF: `ghcr.io/example/klan-backend@sha256:${'c'.repeat(64)}`,
-  GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '2', GITHUB_RUN_ATTEMPT: '1',
-  GITHUB_ACTOR: 'example', GHCR_TOKEN: 'synthetic-token',
+  PRODUCTION_URL: 'https://klan.example.test', GITHUB_SHA: newSha, GITHUB_RUN_ID: '2', GITHUB_RUN_ATTEMPT: '1',
 };
-
-for (const [setting, value, expected] of [
-  ['DEPLOY_HOST', "host'; touch /tmp/forbidden", 'Invalid SSH host'],
-  ['DEPLOY_PORT', '0', 'Invalid SSH port'],
-  ['DEPLOY_PORT', '65536', 'Invalid SSH port'],
+for (const [setting, value, message] of [
+  ['DEPLOY_HOST', "host';command", 'Invalid SSH host'],
   ['DEPLOY_USER', 'user;command', 'Invalid SSH user'],
-  ['KLAN_COMPONENT', '../backend', 'Invalid component'],
-  ['IMAGE_REF', 'ghcr.io/example/klan-backend:latest', 'immutable Klan image digest'],
-  ['IMAGE_REF', `ghcr.io/example/klan-frontend@sha256:${'c'.repeat(64)}`, 'immutable Klan image digest'],
+  ['DEPLOY_PORT', '0', 'Invalid SSH port'],
+  ['PRODUCTION_URL', 'http://klan.example.test', 'HTTPS origin'],
+  ['PRODUCTION_URL', 'https://klan.example.test/path', 'HTTPS origin'],
+  ['PRODUCTION_URL', 'https://user@klan.example.test', 'HTTPS origin'],
+  ['PRODUCTION_URL', 'https://klan.example.test:70000', 'Invalid production URL port'],
   ['GITHUB_SHA', 'main', 'Invalid commit'],
-  ['GITHUB_RUN_ID', '../2', 'Invalid run'],
-  ['GITHUB_ACTOR', 'user;command', 'Invalid registry user'],
-  ['PRODUCTION_ENV', '', 'Missing setting: PRODUCTION_ENV'],
 ]) {
-  test(`transport rejects ${setting}=${JSON.stringify(value)} before SSH`, { skip: unavailable }, (context) => {
-    const fixture = harness(context);
-    const result = fixture.command(join(deployDirectory, 'deploy.sh'), [], { ...transportEnvironment, [setting]: value });
+  test('transport rejects ' + setting + '=' + value + ' before SSH', { skip: unavailable }, (context) => {
+    const f = harness(context);
+    const result = f.command(join(deployDirectory, 'deploy.sh'), [shellPath(f.incoming)], { ...transportEnvironment, [setting]: value });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, new RegExp(expected));
-    assert.deepEqual(fixture.log(), []);
+    assert.match(result.stderr, new RegExp(message));
+    assert.doesNotMatch(result.stderr, /unexpected-ssh/);
   });
 }
-
-test('successful deployment publishes current and retains the previous release', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  const result = fixture.deploy();
-  assert.equal(result.status, 0, result.stderr || result.error?.message);
-  assert.equal(fixture.current(), `releases/${newId}`);
-  assert.equal(fixture.previous(), `releases/${oldId}`);
-  assert.deepEqual(fixture.hooks(), ['preflight:new', 'start:new', 'verify:new']);
-  assert.doesNotMatch(result.stdout + result.stderr, /fake-short-lived-token/);
-});
-
-for (const [failure, hooks] of [
-  ['FAIL_PREFLIGHT', ['preflight:new']],
-  ['FAIL_PULL', []],
-]) {
-  test(`${failure} keeps the current release running without attempting rollback`, { skip: unavailable }, (context) => {
-    const fixture = harness(context);
-    const result = fixture.deploy({ [failure]: failure === 'FAIL_PULL' ? 'yes' : 'new' });
-    assert.notEqual(result.status, 0);
-    assert.equal(fixture.current(), `releases/${oldId}`);
-    assert.equal(fixture.previous(), '');
-    assert.deepEqual(fixture.hooks(), hooks);
-  });
-}
-
-for (const failure of ['FAIL_START', 'FAIL_VERIFY']) {
-  test(`${failure} stops the failed service and restores the old release`, { skip: unavailable }, (context) => {
-    const fixture = harness(context);
-    const result = fixture.deploy({ [failure]: 'new' });
-    assert.notEqual(result.status, 0);
-    assert.equal(fixture.current(), `releases/${oldId}`);
-    assert.equal(fixture.previous(), '');
-    const expected = ['preflight:new', 'start:new'];
-    if (failure === 'FAIL_VERIFY') expected.push('verify:new');
-    assert.deepEqual(fixture.hooks(), [...expected, 'stop:new', 'start:old', 'verify:old']);
-    assert.match(result.stderr, /Previous release restored/);
-  });
-}
-
-test('a failed first deployment stops the service and does not publish current', { skip: unavailable }, (context) => {
-  const fixture = harness(context, { previous: false });
-  const result = fixture.deploy({ FAIL_VERIFY: 'new' });
-  assert.notEqual(result.status, 0);
-  assert.equal(fixture.current(), '');
-  assert.equal(fixture.previous(), '');
-  assert.deepEqual(fixture.hooks(), ['preflight:new', 'start:new', 'verify:new', 'stop:new']);
-  assert.match(result.stderr, /First deployment failed; service stopped/);
-  assert.ok(existsSync(join(fixture.root, 'releases', newId, 'runtime.env')));
-});
-
-test('failed rollback is reported and cannot turn a failed deployment into success', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  const result = fixture.deploy({ FAIL_VERIFY: 'new', FAIL_START: 'old' });
-  assert.notEqual(result.status, 0);
-  assert.equal(fixture.current(), `releases/${oldId}`);
-  assert.deepEqual(fixture.hooks(), ['preflight:new', 'start:new', 'verify:new', 'stop:new', 'start:old']);
-  assert.match(result.stderr, /ROLLBACK FAILED/);
-});
-
-test('if the failed service cannot stop, rollback never starts a second worker', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  const result = fixture.deploy({ FAIL_VERIFY: 'new', FAIL_STOP: 'new' });
-  assert.notEqual(result.status, 0);
-  assert.equal(fixture.current(), `releases/${oldId}`);
-  assert.deepEqual(fixture.hooks(), ['preflight:new', 'start:new', 'verify:new', 'stop:new']);
-  assert.match(result.stderr, /automatic rollback was not started/);
-});
-
-test('manual rollback uses the saved release and environment, then swaps current and previous', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  assert.equal(fixture.deploy().status, 0);
-  const before = fixture.hooks().length;
-  const result = fixture.rollback();
-  assert.equal(result.status, 0, result.stderr || result.error?.message);
-  assert.equal(fixture.current(), `releases/${oldId}`);
-  assert.equal(fixture.previous(), `releases/${newId}`);
-  assert.deepEqual(fixture.hooks().slice(before), ['preflight:old', 'start:old', 'verify:old']);
-  assert.equal(fixture.log().filter((entry) => entry === 'docker:login').length, 1);
-  assert.equal(fixture.log().filter((entry) => entry === 'docker:pull').length, 1);
-});
-
-test('manual rollback without a saved previous release leaves the active service untouched', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  const result = fixture.rollback();
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /No previous release/);
-  assert.equal(fixture.current(), `releases/${oldId}`);
-  assert.deepEqual(fixture.hooks(), []);
-});
-
-test('runtime configuration is treated as data rather than sourced shell code', { skip: unavailable }, (context) => {
-  const fixture = harness(context);
-  const marker = join(fixture.root, 'must-not-exist');
-  write(join(fixture.root, 'releases', newId, 'runtime.env'), `EXAMPLE=$(touch '${shellPath(marker)}')\n`);
-  const result = fixture.deploy();
-  assert.equal(result.status, 0, result.stderr || result.error?.message);
-  assert.equal(existsSync(marker), false);
-});

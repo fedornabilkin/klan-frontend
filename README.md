@@ -33,7 +33,7 @@ npm run build
 | --- | --- |
 | `Project/` | Исходники, package/lockfile, Vite/TypeScript, локальный `.env`, зависимости и сборка |
 | `Docker/` | Dockerfile, Compose, Dockerfile-specific ignore и пример окружения контейнеров |
-| `Deploy/` | Конфигурация Caddy и systemd для сервера |
+| `Deploy/` | Публикация статики, конфигурация nginx; отдельные варианты Caddy/systemd |
 | `Scripts/` | Подготовка окружения и локальный запуск |
 | `Docs/` | Архитектура, требования и развёртывание |
 | `Agreements/` | Правила разработки и русских сообщений коммитов |
@@ -42,9 +42,9 @@ npm run build
 
 ## Развёртывание
 
-Production через GitHub Actions, GHCR и VPS описан в [отдельном руководстве](Docs/deployment-github-vps.md): готовые образы по digest, nginx с HTTPS и откат релиза.
+Production через GitHub Actions и SSH описан в [отдельном руководстве](Docs/deployment-github-vps.md). Workflow собирает статику, передаёт архив с SHA256 на VPS и публикует файлы в `/var/www/klan` для установленного nginx. После проверки публичного HTTPS-адреса сохраняется предыдущий релиз для отката. В GitHub нужны пять SSH secrets и публичная variable `PRODUCTION_URL`; сборка на VPS и контейнер frontend не требуются.
 
-Обычный сервер может обслуживать `Project/dist/` через Caddy с конфигурацией `Deploy/Caddyfile`. Для Docker из корня репозитория:
+Для самостоятельного ручного запуска можно обслуживать `Project/dist/` через Caddy с конфигурацией `Deploy/Caddyfile` либо использовать Docker из корня репозитория:
 
 ```sh
 cp Docker/.env.example Docker/.env
