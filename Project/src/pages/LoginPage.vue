@@ -7,7 +7,7 @@ import { api, errorMessage } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import Icon from '@/components/ui/Icon.vue';
 
-interface AuthConfig { demo: boolean; botUsername: string }
+interface AuthConfig { demo: boolean; botUsername: string | null }
 interface Challenge { id: string; botUrl: string; expiresAt: string }
 const route = useRoute();
 const router = useRouter();
@@ -50,7 +50,7 @@ async function poll(): Promise<void> {
       return;
     }
     if (response.data.status === 'expired') { expired.value = true; return; }
-    if (response.data.status === 'rejected' || response.data.status === 'denied') { error.value = 'Вход недоступен: бот не подтвердил участие в группе сообщества.'; return; }
+    if (response.data.status === 'rejected' || response.data.status === 'denied') { error.value = 'Вход не подтверждён. Начните вход заново.'; return; }
     timer = setTimeout(() => { void poll(); }, 1800);
   } catch (cause) {
     if (disposed) return;
@@ -118,7 +118,7 @@ onUnmounted(() => { disposed = true; controller.abort(); if (timer) clearTimeout
         h2#login-title Добро пожаловать
           br
           | в свой круг.
-        p.login-panel__description Войдите через Telegram. Мы проверим участие в группе и откроем доступ к сообществу.
+        p.login-panel__description Подтвердите вход в Telegram, чтобы открыть Клан.
         .login-loading(v-if="loading")
           n-spin(size="small")
           span Подключаемся к сообществу…
@@ -137,7 +137,7 @@ onUnmounted(() => { disposed = true; controller.abort(); if (timer) clearTimeout
                 Icon(name="telegram")
               | {{ expired ? 'Получить новую ссылку' : 'Войти через Telegram' }}
           p.login-expired(v-if="expired") Ссылка истекла. Создайте новую для безопасного входа.
-          p.login-config-note(v-if="!canTelegram && !config?.demo && !error") Вход ещё не настроен. Администратору нужно подключить бота Telegram.
+          p.login-config-note(v-if="!canTelegram && !config?.demo && !error") Бот Telegram пока недоступен. Попробуйте обновить страницу.
           .login-demo(v-if="config?.demo")
             .login-divider
               span ЛОКАЛЬНАЯ ДЕМОВЕРСИЯ

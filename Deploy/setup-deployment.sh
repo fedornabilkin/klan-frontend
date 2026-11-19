@@ -504,13 +504,12 @@ read_setting() {
 
 configure_runtime() {
   local backend=/opt/klan/backend/shared/runtime.env bot=/opt/klan/bot/shared/runtime.env
-  local token='' secret='' api_token='' bot_token='' api_secret='' bot_secret='' username groups='' admins password origin mount bind_file bind address url old_url
+  local token='' secret='' api_secret='' bot_secret='' groups='' admins password origin mount bind_file bind address url old_url
   local membership_override="${TELEGRAM_REQUIRE_GROUP_MEMBERSHIP:-}"
   [[ -z "$membership_override" || "$membership_override" == true || "$membership_override" == false ]] ||
     fail 'TELEGRAM_REQUIRE_GROUP_MEMBERSHIP принимает true или false.'
   local ids='^-[1-9][0-9]*(,-[1-9][0-9]*)*$' admin_ids='^([1-9][0-9]*(,[1-9][0-9]*)*)?$'
   if selected backend; then
-    api_token=$(get_value "$backend" TELEGRAM_BOT_TOKEN)
     api_secret=$(get_value "$backend" BOT_INTERNAL_SECRET)
     if [[ ! -f "$backend" ]]; then
       mount=$(deploy_docker volume inspect --format '{{ .Mountpoint }}' klan-production-postgres)
@@ -518,22 +517,22 @@ configure_runtime() {
       [[ -z $(find "$mount" -mindepth 1 -maxdepth 1 -print -quit) ]] ||
         fail "У базы уже есть данные. Восстановите её действующий runtime.env в $backend и повторите запуск."
     else
-      [[ -n "$api_token" && -n "$api_secret" ]] || fail "Заполните TELEGRAM_BOT_TOKEN и BOT_INTERNAL_SECRET в $backend."
+      [[ -n "$api_secret" ]] || fail "Заполните BOT_INTERNAL_SECRET в $backend."
     fi
   fi
   if selected bot; then
-    bot_token=$(get_value "$bot" TELEGRAM_BOT_TOKEN)
+    token=$(get_value "$bot" TELEGRAM_BOT_TOKEN)
     bot_secret=$(get_value "$bot" BOT_BACKEND_SECRET)
     if [[ -f "$bot" ]]; then
-      [[ -n "$bot_token" && -n "$bot_secret" ]] || fail "Заполните TELEGRAM_BOT_TOKEN и BOT_BACKEND_SECRET в $bot."
+      [[ -n "$token" && -n "$bot_secret" ]] || fail "Заполните TELEGRAM_BOT_TOKEN и BOT_BACKEND_SECRET в $bot."
     fi
   fi
-  [[ -z "$api_token" || -z "$bot_token" || "$api_token" == "$bot_token" ]] || fail 'У API и бота указаны разные токены Telegram. Сверьте файлы shared/runtime.env.'
   [[ -z "$api_secret" || -z "$bot_secret" || "$api_secret" == "$bot_secret" ]] || fail 'У API и бота различаются секреты внутренней связи. Сверьте файлы shared/runtime.env.'
-  token=${api_token:-$bot_token}
   secret=${api_secret:-$bot_secret}
-  if [[ -z "$token" ]]; then token=$(ask_secret 'Токен Telegram от BotFather'); fi
-  [[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]] || fail 'Проверьте формат токена BotFather.'
+  if selected bot; then
+    if [[ -z "$token" ]]; then token=$(ask_secret 'Токен Telegram от BotFather'); fi
+    [[ "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]] || fail 'Проверьте формат токена BotFather.'
+  fi
   if [[ -z "$secret" ]]; then
     if selected backend; then secret=$(openssl rand -hex 32)
     else secret=$(ask_secret 'Действующий BOT_INTERNAL_SECRET с сервера API'); fi
@@ -544,8 +543,6 @@ configure_runtime() {
 
   if selected backend; then
     if [[ ! -f "$backend" ]]; then
-      username=$(ask 'Имя бота в Telegram без @' ''); username=${username#@}
-      [[ "$username" =~ ^[a-zA-Z0-9_]{5,32}$ ]] || fail 'Проверьте имя бота.'
       if [[ "$membership_override" != false ]]; then
         groups=$(ask 'Числовые ID разрешённых групп Telegram через запятую' '')
         groups=${groups// /}
@@ -561,8 +558,6 @@ POSTGRES_DB=klan
 POSTGRES_USER=klan
 POSTGRES_PASSWORD=$password
 DATABASE_URL=postgresql://klan:$password@db:5432/klan
-TELEGRAM_BOT_TOKEN=$token
-TELEGRAM_BOT_USERNAME=$username
 TELEGRAM_REQUIRE_GROUP_MEMBERSHIP=${membership_override:-true}
 TELEGRAM_GROUP_IDS=$groups
 TELEGRAM_GROUP_LEVELS={}
