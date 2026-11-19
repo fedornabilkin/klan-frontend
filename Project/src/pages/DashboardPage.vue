@@ -161,7 +161,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
               h3 {{ challenge.title }}
               .challenge-type
                 Icon(name="fire")
-                | {{ challenge.participantCount ?? challenge.participants.length }} участников · {{ challenge.goal?.target }} {{ challenge.goal?.unit }}
+                | {{ challenge.participantCount ?? challenge.participants.length }} участников · {{ challenge.goal?.target }} {{ challenge.goal?.unit }} на человека
             Icon(name="arrow-up-right-from-square")
           .challenge-progress(role="progressbar" :aria-valuenow="Math.round(progress(challenge.schedule?.start,challenge.schedule?.end))" aria-valuemin="0" aria-valuemax="100" aria-label="Время челленджа")
             span(:style="{width: progress(challenge.schedule?.start,challenge.schedule?.end) + '%'}")

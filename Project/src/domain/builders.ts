@@ -156,6 +156,7 @@ function buildPendingResult(value: unknown, person: (value: unknown) => User, te
 export class CommunityEntity implements Entity {
   id!: string; type!: Entity['type']; title!: string; description!: string; status!: string; category!: string;
   tags!: Tag[]; createdAt!: string; location?: Location; schedule?: Entity['schedule']; cover?: string;
+  challengeTeams?: NonNullable<Participation['team']>[];
   participants!: Participation[]; author?: User; motto?: string; content?: string; goal?: Entity['goal'];
   results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
   constructor(data: Entity) { Object.assign(this, data); }
@@ -198,10 +199,11 @@ export class EntityBuilder {
       location: dto.location == null ? undefined : buildLocation(dto.location),
       schedule: schedule ? { start: string(schedule.start, 'schedule.start'), end: string(schedule.end, 'schedule.end') } : undefined,
       cover: dto.cover == null ? undefined : string(dto.cover, 'entity.cover'),
+      challengeTeams: type === 'challenges' ? teams.filter((t): t is NonNullable<typeof t> => !!t) : undefined,
       participants: array(dto.participants, value => buildParticipation(value, person, team), 'participants'),
       author: dto.author == null ? undefined : person(dto.author),
       motto: dto.motto == null ? undefined : string(dto.motto, 'motto'), content: dto.content == null ? undefined : string(dto.content, 'content'),
-      goal: goal ? { target: number(goal.target, 'goal.target'), unit: string(goal.unit, 'goal.unit') } : undefined,
+      goal: goal ? { target: number(goal.target, 'goal.target'), unit: string(goal.unit, 'goal.unit'), ...(goal.scope === 'participant' && {scope:'participant' as const}) } : undefined,
       results: array(dto.results, value => buildResult(value, person, team), 'results'), readers: array(dto.readers, person, 'readers'),
       pendingResults: array(dto.pendingResults, value => buildPendingResult(value, person, team), 'pendingResults'),
       capacity: dto.capacity == null ? undefined : number(dto.capacity, 'capacity'),

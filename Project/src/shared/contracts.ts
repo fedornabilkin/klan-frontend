@@ -29,7 +29,9 @@ export interface Entity {
   status: string; category: string; tags: Tag[]; createdAt: string;
   location?: Location; schedule?: { start: string; end: string }; cover?: string;
   participants: Participation[]; author?: User; motto?: string; content?: string;
-  goal?: { target: number; unit: string }; results?: ChallengeResult[];
+  goal?: { target: number; unit: string; scope?: 'participant' }; results?: ChallengeResult[];
+  /** Visible team directory included with compact challenge details. */
+  challengeTeams?: NonNullable<Participation['team']>[];
   pendingResults?: ChallengePendingResult[];
   readers?: User[]; capacity?: number;
 }

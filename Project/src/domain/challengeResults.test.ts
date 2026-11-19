@@ -1,5 +1,6 @@
+import { challengeStandings } from './challengeStandings';
 import { describe, expect, it } from 'vitest';
-import type { ChallengePendingResult, ChallengeResult, User } from '@shared/contracts';
+import type { ChallengePendingResult, ChallengeResult, Entity, User } from '@shared/contracts';
 import { filterChallengeResults, filterPendingChallengeResults, paginateChallengeResults, resultDateLabel, SOLO_RESULT_TEAM } from './challengeResults';
 
 const user = (id: string, name = 'Иван Петров'): User => ({
@@ -64,4 +65,18 @@ describe('Challenge daily results', () => {
     expect(selectedPending.every(row => !('date' in row))).toBe(true);
     expect(pending[0]?.sourceCell).toBe('AJ12');
   });
+});
+
+it('ranks every team including zero scores and bases goals only on distinct enrolled members', () => {
+  const empty = {id:'empty',title:'Команда без участников'};
+  const entity: Entity = {id:'c',type:'challenges',title:'C',description:'',category:'count',status:'active',tags:[],createdAt:'',
+    challengeTeams:[empty,south,north],goal:{target:1000,unit:'раз',scope:'participant'},
+    participants:[{user:first,team:north},{user:namesake,team:north},{user:third},{user:first,team:north}],results:rows,
+    pendingResults:[{user:first,team:north,value:999,sourceCell:'K1',reason:'Нет даты'}]};
+  const s = challengeStandings(entity);
+  expect(s.target).toBe(3000);
+  expect(s.score).toBe(57);
+  expect(s.teams.map(r=>[r.team.id,r.score,r.target])).toEqual([['north',30,2000],['south',20,0],['empty',0,0]]);
+  expect(s.people.map(r=>[r.user.id,r.score])).toEqual([['u1',38],['u2',12],['u3',7]]);
+  expect(challengeStandings({...entity,participants:[],results:[]}).target).toBe(0);
 });

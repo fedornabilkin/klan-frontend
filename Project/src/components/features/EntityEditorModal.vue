@@ -114,7 +114,7 @@ async function save() {
       ...(hasDates.value ? { schedule: { start: new Date(f.start).toISOString(), end: new Date(f.end).toISOString() } } : {}),
       ...(hasLocation.value ? { location } : {}),
       ...(props.resource === 'teams' ? { motto: f.motto } : {}),
-      ...(props.resource === 'challenges' ? { goal: { target: f.target, unit: f.unit.trim() } } : {}),
+      ...(props.resource === 'challenges' ? { goal: { target: f.target, unit: f.unit.trim(), scope: 'participant' } } : {}),
       ...(props.resource === 'events' ? { capacity: f.capacity } : {}),
     }
   busy.value = true
@@ -170,11 +170,11 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
     NFormItem(v-if="resource === 'teams'" label="Девиз")
       NInput(v-model:value="form.motto")
     .editor-columns(v-if="resource === 'challenges'")
-      NFormItem(label="Цель")
-        NInputNumber(v-model:value="form.target" :min="1")
+      NFormItem(label="Цель на одного участника" required)
+        NInputNumber(v-model:value="form.target" :min="0" :max="1e9")
       NFormItem(label="Единица измерения")
         NInput(v-model:value="form.unit" placeholder="раз / км / посещений")
-    p.editor-hint(v-if="resource === 'challenges'") {{ form.category === 'attendance' ? 'Факт посещения: участник отмечает 0 или 1 за день. Цель — общее число посещений за весь период.' : 'Количество: участник записывает свой результат за день в выбранной единице измерения. Результаты суммируются.' }}
+    p.editor-hint(v-if="resource === 'challenges'") {{ form.category === 'attendance' ? 'Факт посещения: участник отмечает 0 или 1 за день. Укажите число посещений для одного участника за весь период.' : 'Укажите личную цель за весь период. Цели команды и челленджа рассчитываются по числу участников.' }}
     template(v-if="isUser")
       fieldset.entry-section(v-for="section in entrySections" :key="section.field")
         legend {{ section.label }}
