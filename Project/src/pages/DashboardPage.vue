@@ -47,7 +47,9 @@ function date(value?: string) { if (!value) return ''; const d = new Date(value)
 function time(value: string) { return new Intl.DateTimeFormat('ru', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value)) }
 function progress(start?: string, end?: string) { if (!start || !end) return 0; return Math.max(0, Math.min(100, ((Date.now() - Date.parse(start)) / (Date.parse(end) - Date.parse(start))) * 100)) }
 async function loadDashboard() {
-  try { const result = await communityService.dashboard(); if (!disposed) { dashboard.value = result; dashboardError.value = '' } }
+  try { const result = await communityService.dashboard(); if (!disposed) { dashboard.value = result; dashboardError.value = ''
+    if (activityPage.value === 1) activity.value = result.activity.slice(0,5)
+    activityPages.value = Math.max(1,Math.ceil((result.activityTotal ?? result.activity.length)/5)) } }
   catch (error) { if (!disposed) dashboardError.value = errorMessage(error) }
 }
 async function loadMap() {
@@ -86,10 +88,10 @@ watch(() => [route.query.q, route.query.tag], () => {
   if (selectedTags.value.join(',') !== nextTags) selectedTags.value = nextTags.split(',').filter(Boolean)
 })
 onMounted(() => {
-  void loadDashboard(); void loadMap(); void loadActivity()
+  void loadDashboard(); void loadMap()
   unsubscribe = subscribeRealtime(message => {
     if (message.type === 'activity') { activity.value = [message.data,...activity.value.filter(a=>a.id !== message.data.id)]; activity.value = activity.value.slice(0,Math.max(5,activityPage.value * 5)) }
-    else { void loadDashboard(); if (message.resource === 'users' || message.resource === '*') void loadMap() }
+    else { if (message.resource === 'dashboard' || message.resource === '*') void loadDashboard(); if (message.resource === 'users' || message.resource === '*') void loadMap() }
   })
 })
 onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce); mapController?.abort() })
@@ -153,13 +155,13 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
           RouterLink.text-link(to="/challenges") Все челленджи
             Icon(name="arrow-right")
         p.empty-message(v-if="dashboard && !dashboard.challenges.length") В этом месяце пока нет челленджей.
-        RouterLink.challenge-preview(v-for="challenge in dashboard?.challenges.slice(0,2)" :key="challenge.id" :to="'/challenges/' + challenge.id" style="display:block")
+        RouterLink.challenge-preview(v-for="challenge in dashboard?.challenges.slice(0,2)" :key="challenge.id" :to="'/challenges/' + (challenge.publicId ?? challenge.id)" style="display:block")
           .challenge-top
             div
               h3 {{ challenge.title }}
               .challenge-type
                 Icon(name="fire")
-                | {{ challenge.participants.length }} участников · {{ challenge.goal?.target }} {{ challenge.goal?.unit }}
+                | {{ challenge.participantCount ?? challenge.participants.length }} участников · {{ challenge.goal?.target }} {{ challenge.goal?.unit }}
             Icon(name="arrow-up-right-from-square")
           .challenge-progress(role="progressbar" :aria-valuenow="Math.round(progress(challenge.schedule?.start,challenge.schedule?.end))" aria-valuemin="0" aria-valuemax="100" aria-label="Время челленджа")
             span(:style="{width: progress(challenge.schedule?.start,challenge.schedule?.end) + '%'}")
@@ -174,12 +176,12 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
           RouterLink.text-link(to="/teams") Все команды
             Icon(name="arrow-right")
         .team-mini-grid
-          RouterLink.team-mini(v-for="(team,index) in dashboard?.teams.slice(0,4)" :key="team.id" :to="'/teams/' + team.id")
+          RouterLink.team-mini(v-for="(team,index) in dashboard?.teams.slice(0,4)" :key="team.id" :to="'/teams/' + (team.publicId ?? team.id)")
             .team-emblem
               Icon(:name="index % 2 ? 'fire' : 'mountain-sun'")
             div
               h3 {{ team.title }}
-              p {{ team.participants.length }} участников · Активна
+              p {{ team.participantCount ?? team.participants.length }} участников · Активна
             Icon(name="chevron-right")
     .dashboard-aside
       section.panel
@@ -187,7 +189,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
           h2 Ближайшая встреча
           span.month-label {{ month.split(' ')[0] }}
         .event-preview(v-if="nextEvent")
-          RouterLink.event-illustration(:to="'/events/' + nextEvent.id" tabindex="-1" aria-hidden="true")
+          RouterLink.event-illustration(:to="'/events/' + (nextEvent.publicId ?? nextEvent.id)" tabindex="-1" aria-hidden="true")
             i.sun
             span {{ nextEvent.category === 'online' ? 'ОНЛАЙН' : 'ВЫХОД ИЗ ЗОНЫ КОМФОРТА' }}
           .event-meta
@@ -201,8 +203,8 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
           .event-meta
             span
               Icon(name="users")
-              | {{ nextEvent.participants.length }} уже в деле
-          RouterLink.button.primary(:to="'/events/' + nextEvent.id") Подробнее о встрече
+              | {{ nextEvent.participantCount ?? nextEvent.participants.length }} уже в деле
+          RouterLink.button.primary(:to="'/events/' + (nextEvent.publicId ?? nextEvent.id)") Подробнее о встрече
             Icon(name="arrow-right")
         p.empty-message(v-else) Новые встречи появятся здесь.
       section.panel

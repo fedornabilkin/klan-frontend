@@ -19,10 +19,10 @@ export function parsePage(value: unknown): number {
 export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?: number } = {}) {
   const route = useRoute();
   const router = useRouter();
-  const limit = options.limit ?? 12;
+  const limit = computed(() => toValue(resource) === 'teams' ? 30 : options.limit ?? 12);
   const filters = reactive<ListFilters>(parseFilters(route.query));
   const items = shallowRef<(UserModel | CommunityEntity)[]>([]);
-  const meta = ref<ListMeta>({ page: 1, pages: 1, limit, total: 0 });
+  const meta = ref<ListMeta>({ page: 1, pages: 1, limit:limit.value, total: 0 });
   const loading = ref(false);
   const error = ref('');
   const page = computed(() => parsePage(route.query.page));
@@ -37,7 +37,7 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
     loading.value = true;
     error.value = '';
     try {
-      const result = await communityService.list(toValue(resource), { ...parseFilters(route.query), page: page.value, limit }, abort.signal);
+      const result = await communityService.list(toValue(resource), { ...parseFilters(route.query), page: page.value, limit:limit.value, view:'cards' }, abort.signal);
       if (disposed || current !== requestId) return;
       items.value = result.data;
       meta.value = result.meta;

@@ -30,7 +30,7 @@ async function load() {
 }
 onMounted(load)
 onScopeDispose(() => { ++requestId; controller?.abort() })
-useRealtime(message => { if (message.type === 'invalidate') void load() })
+useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].includes(message.resource)) void load() })
 </script>
 
 <template lang="pug">
@@ -90,7 +90,7 @@ useRealtime(message => { if (message.type === 'invalidate') void load() })
           h2 Участие в командах
           Icon(name="flag")
         .team-stats(v-if="stats.teams.length")
-          RouterLink.team-stat(v-for="team in stats.teams" :key="team.id" :to="`/teams/${team.id}`")
+          RouterLink.team-stat(v-for="team in stats.teams" :key="team.id" :to="`/teams/${team.publicId ?? team.id}`")
             span {{ team.title }}
             b {{ team.count }}
         EmptyState(v-else title="Команд пока нет")

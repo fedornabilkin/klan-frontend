@@ -15,6 +15,15 @@ describe('DTO → Builder → Domain', () => {
     expect(entity.place).toBe('Москва, Россия');
     expect(entity.isAdmin).toBe(false);
   });
+  it('shares people and team references across results, including dictionary index zero', () => {
+    const dto = {id:'legacy',publicId:8,type:'challenges',title:'October',people:[user],teams:[{id:'old-team',publicId:2,title:'Team'}],
+      participants:[{user:0,team:0}],results:[{user:0,team:0,date:'2026-10-01',value:7}]};
+    const entity = new EntityBuilder().from(dto).build();
+    expect(entity.results![0]!.user).toBe(entity.participants[0]!.user);
+    expect(entity.results![0]!.team).toBe(entity.participants[0]!.team);
+    expect(entity.results![0]!.team?.publicId).toBe(2);
+    expect(() => new EntityBuilder().from({...dto,people:[]}).build()).toThrow(InvalidDtoError);
+  });
   it('preserves an optional callsign from the profile DTO', () => {
     expect(new UserBuilder().from({ ...user, callsign: 'Сокол' }).build().callsign).toBe('Сокол');
     expect(new UserBuilder().from(user).build().callsign).toBeUndefined();

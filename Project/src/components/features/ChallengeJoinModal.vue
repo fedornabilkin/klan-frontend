@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref,watch } from 'vue';
 import { NButton,NModal,NRadioButton,NRadioGroup,NSelect } from 'naive-ui';
-import type { Entity,ListResponse } from '@shared/contracts';
+import type { Entity,ApiResponse,User } from '@shared/contracts';
 import { api } from '@/services/api';
-import { useAuthStore } from '@/stores/auth';
-const props=defineProps<{show:boolean;entity:Entity}>();const emit=defineEmits<{'update:show':[value:boolean];saved:[]}>();const auth=useAuthStore();
+const props=defineProps<{show:boolean;entity:Entity}>();const emit=defineEmits<{'update:show':[value:boolean];saved:[]}>();
 const mode=ref<'solo'|'team'>('solo');const teamId=ref<string|null>(null);const teams=ref<{label:string;value:string}[]>([]);const error=ref('');const busy=ref(false);
-watch(()=>props.show,async(show)=>{if(!show)return;mode.value='solo';error.value='';try{const result=await api.get<ListResponse<Entity>>('/teams',{limit:100,status:'active'});teams.value=result.data.filter(t=>t.participants.some(p=>p.user.id===auth.user?.id)).map(t=>({label:t.title,value:t.id}));teamId.value=teams.value[0]?.value||null;}catch(e){error.value=e instanceof Error?e.message:'Не удалось загрузить команды';}});
+watch(()=>props.show,async(show)=>{if(!show)return;mode.value='solo';error.value='';try{const result=await api.get<ApiResponse<User>>('/users/me');teams.value=(result.data.activeTeams ?? []).map(t=>({label:t.title,value:t.id}));teamId.value=teams.value[0]?.value||null;}catch(e){error.value=e instanceof Error?e.message:'Не удалось загрузить команды';}});
 async function join(){busy.value=true;error.value='';try{await api.post(`/challenges/${props.entity.id}/join`,mode.value==='team'?{teamId:teamId.value}:{});emit('saved');emit('update:show',false);}catch(e){error.value=e instanceof Error?e.message:'Не удалось присоединиться';}finally{busy.value=false;}}
 </script>
 <template lang="pug">

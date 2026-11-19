@@ -9,9 +9,9 @@ export interface AnalyticsMember {
   profileCompleteness: number;
   current: { events: number; challenges: number; teams: number; books: number; achievements: number };
 }
-export interface AnalyticsParticipation { id: string; title: string; status: string; participants: number; start?: string; end?: string }
+export interface AnalyticsParticipation { id: string; publicId?: number; title: string; status: string; participants: number; start?: string; end?: string }
 export interface AnalyticsChallenge {
-  id: string; title: string; unit: string; participants: number;
+  id: string; publicId?: number; title: string; unit: string; participants: number;
   periodEntries: number; periodContributors: number; periodValue: number; totalValue: number;
 }
 export interface CommunityAnalytics {
@@ -32,7 +32,7 @@ export interface MemberAnalytics {
   range: AnalyticsRange;
   member: AnalyticsMember;
   profileFields: { label: string; filled: boolean }[];
-  participation: { id: string; type: string; title: string; status: string; start?: string; end?: string }[];
+  participation: { id: string; publicId?: number; type: string; title: string; status: string; start?: string; end?: string }[];
   challenges: AnalyticsChallenge[];
   actions: AnalyticsCount[];
   activity: { data: Activity[]; meta: ListMeta };

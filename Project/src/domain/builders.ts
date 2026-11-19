@@ -41,7 +41,7 @@ function buildProfileTeam(value: unknown): ProfileTeamSummary {
   const memberCount = number(dto.memberCount, 'user.activeTeams.memberCount');
   if (!Number.isSafeInteger(memberCount) || memberCount < 0) throw new InvalidDtoError('user.activeTeams.memberCount');
   return {
-    id: string(dto.id, 'user.activeTeams.id'), title: string(dto.title, 'user.activeTeams.title'),
+    id: string(dto.id, 'user.activeTeams.id'), ...(dto.publicId != null && { publicId: publicId(dto.publicId,'user.activeTeams.publicId') }), title: string(dto.title, 'user.activeTeams.title'),
     description: string(dto.description, 'user.activeTeams.description', ''), memberCount,
   };
 }
@@ -128,29 +128,29 @@ function buildItem(value: unknown): Item {
   const dto = object(value, 'item');
   return { id: string(dto.id, 'item.id'), name: string(dto.name, 'item.name'), quantity: dto.quantity == null ? undefined : number(dto.quantity, 'item.quantity') };
 }
-function buildTeam(value: unknown): { id: string; title: string } | undefined {
+function buildTeam(value: unknown): { id: string; publicId?: number; title: string } | undefined {
   if (value == null) return undefined;
   const dto = object(value, 'team');
-  return { id: string(dto.id, 'team.id'), title: string(dto.title, 'team.title') };
+  return { id: string(dto.id, 'team.id'), publicId: publicId(dto.publicId, 'team.publicId'), title: string(dto.title, 'team.title') };
 }
-function buildParticipation(value: unknown): Participation {
+function buildParticipation(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): Participation {
   const dto = object(value, 'participant');
   const target = dto.target == null ? undefined : number(dto.target, 'participant.target');
   if (target !== undefined && target < 0) throw new InvalidDtoError('participant.target');
-  return { user: new UserBuilder().from(dto.user).build(), team: buildTeam(dto.team), items: array(dto.items, buildItem, 'participant.items'), target };
+  return { user: person(dto.user), team: team(dto.team), items: array(dto.items, buildItem, 'participant.items'), target };
 }
-function buildResult(value: unknown): ChallengeResult {
+function buildResult(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): ChallengeResult {
   const dto = object(value, 'result');
-  return { user: new UserBuilder().from(dto.user).build(), date: string(dto.date, 'result.date'), value: number(dto.value, 'result.value'), team: buildTeam(dto.team) };
+  return { user: person(dto.user), date: string(dto.date, 'result.date'), value: number(dto.value, 'result.value'), team: team(dto.team) };
 }
-function buildPendingResult(value: unknown): ChallengePendingResult {
+function buildPendingResult(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): ChallengePendingResult {
   const dto = object(value, 'pendingResult');
   const amount = number(dto.value, 'pendingResult.value');
   const sourceCell = string(dto.sourceCell, 'pendingResult.sourceCell');
   const reason = string(dto.reason, 'pendingResult.reason');
   if (amount < 0) throw new InvalidDtoError('pendingResult.value');
   if (!sourceCell.trim() || !reason.trim()) throw new InvalidDtoError('pendingResult.source');
-  return { user: new UserBuilder().from(dto.user).build(), value: amount, team: buildTeam(dto.team), sourceCell, reason };
+  return { user: person(dto.user), value: amount, team: team(dto.team), sourceCell, reason };
 }
 
 export class CommunityEntity implements Entity {
@@ -160,7 +160,8 @@ export class CommunityEntity implements Entity {
   results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
   constructor(data: Entity) { Object.assign(this, data); }
   get displayName(): string { return this.title; }
-  get memberCount(): number { return this.participants.length; }
+  publicId?: number; participantCount?: number; readerCount?: number;
+  get memberCount(): number { return this.participantCount ?? this.participants.length; }
   get isActive(): boolean { return this.status === 'active'; }
   hasParticipant(userId: string): boolean { return this.participants.some(p => p.user.id === userId); }
 }
@@ -175,20 +176,34 @@ export class EntityBuilder {
     if (!entityTypes.has(type)) throw new InvalidDtoError('entity.type');
     const schedule = dto.schedule == null ? undefined : object(dto.schedule, 'schedule');
     const goal = dto.goal == null ? undefined : object(dto.goal, 'goal');
+    const people = array(dto.people, value => new UserBuilder().from(value).build(), 'people');
+    const teams = array(dto.teams, buildTeam, 'teams');
+    function person(value: unknown): User {
+      if (typeof value !== 'number') return new UserBuilder().from(value).build();
+      const user = people[value];
+      if (!user) throw new InvalidDtoError('entity.people');
+      return user;
+    }
+    function team(value: unknown) {
+      if (typeof value !== 'number') return buildTeam(value);
+      const entry = teams[value];
+      if (!entry) throw new InvalidDtoError('entity.teams');
+      return entry;
+    }
     return new CommunityEntity({
-      id: string(dto.id, 'entity.id'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
+      id: string(dto.id, 'entity.id'), publicId: publicId(dto.publicId, 'entity.publicId'), participantCount: dto.participantCount == null ? undefined : number(dto.participantCount, 'participantCount'), readerCount: dto.readerCount == null ? undefined : number(dto.readerCount, 'readerCount'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
       description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', 'active'),
       category: string(dto.category, 'entity.category', ''), tags: array(dto.tags, buildTag, 'entity.tags'),
       createdAt: string(dto.createdAt, 'entity.createdAt', ''),
       location: dto.location == null ? undefined : buildLocation(dto.location),
       schedule: schedule ? { start: string(schedule.start, 'schedule.start'), end: string(schedule.end, 'schedule.end') } : undefined,
       cover: dto.cover == null ? undefined : string(dto.cover, 'entity.cover'),
-      participants: array(dto.participants, buildParticipation, 'participants'),
-      author: dto.author == null ? undefined : new UserBuilder().from(dto.author).build(),
+      participants: array(dto.participants, value => buildParticipation(value, person, team), 'participants'),
+      author: dto.author == null ? undefined : person(dto.author),
       motto: dto.motto == null ? undefined : string(dto.motto, 'motto'), content: dto.content == null ? undefined : string(dto.content, 'content'),
       goal: goal ? { target: number(goal.target, 'goal.target'), unit: string(goal.unit, 'goal.unit') } : undefined,
-      results: array(dto.results, buildResult, 'results'), readers: array(dto.readers, v => new UserBuilder().from(v).build(), 'readers'),
-      pendingResults: array(dto.pendingResults, buildPendingResult, 'pendingResults'),
+      results: array(dto.results, value => buildResult(value, person, team), 'results'), readers: array(dto.readers, person, 'readers'),
+      pendingResults: array(dto.pendingResults, value => buildPendingResult(value, person, team), 'pendingResults'),
       capacity: dto.capacity == null ? undefined : number(dto.capacity, 'capacity'),
     });
   }

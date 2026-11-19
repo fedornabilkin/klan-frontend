@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { NButton, NSkeleton } from 'naive-ui';
 import type { Entity, Resource, User } from '@shared/contracts';
 import { userPath } from '@shared/user-links';
@@ -25,9 +25,9 @@ import ChallengeResultsSection from '@/components/features/ChallengeResultsSecti
 import ReadersModal from '@/components/features/ReadersModal.vue';
 import { categoryLabels, dateLabel, resourceMeta } from '@/components/features/resourceMeta';
 
-const route=useRoute();const auth=useAuthStore();
+const route=useRoute();const router=useRouter();const auth=useAuthStore();
 const resource=computed(()=>(route.meta.resource||route.path.split('/')[1]) as Resource);const id=computed(()=>String(route.params.id));
-const record=ref<User|Entity|null>(null);const loading=ref(true);const error=ref('');const refreshError=ref('');const actionError=ref('');const busy=ref(false);
+const record=shallowRef<User|Entity|null>(null);const loading=ref(true);const error=ref('');const refreshError=ref('');const actionError=ref('');const busy=ref(false);
 const showEditor=ref(false);const showItems=ref(false);const showJoin=ref(false);const showResult=ref(false);const showReaders=ref(false);
 const user=computed(()=>record.value as User);const entity=computed(()=>record.value as Entity);
 const isOwn=computed(()=>resource.value==='users'&&record.value?.id===auth.user?.id);
@@ -46,6 +46,9 @@ async function load(){
   loading.value=!record.value;error.value='';refreshError.value='';
   try{
     const result=await communityService.get(resource.value,id.value,signal);if(signal.aborted)return;record.value=result;
+    if(result.publicId && String(result.publicId)!==id.value) {
+      await router.replace({path:`/${resource.value}/${result.publicId}`,query:route.query,hash:route.hash});
+    }
   }catch(cause){
     if(!signal.aborted){const message=cause instanceof Error?cause.message:'Не удалось открыть страницу';if(record.value)refreshError.value=message;else error.value=message;}
   }finally{if(!signal.aborted)loading.value=false;}
@@ -70,7 +73,9 @@ async function act(action:()=>Promise<unknown>){if(busy.value)return;busy.value=
 function join(){if(resource.value==='challenges'){showJoin.value=true;return;}void act(()=>api.post(`/${resource.value}/${id.value}/join`,{}));}
 function leave(){void act(()=>api.delete(`/${resource.value}/${id.value}/join`));}
 function toggleRead(){void act(()=>api.put(`/books/${id.value}/read`,{read:!hasRead.value}));}
-watch([resource,id],()=>{record.value=null;actionError.value='';refreshError.value='';void load();},{immediate:true});
+watch([resource,id],([kind,next],[previous])=>{if(kind===previous&&record.value?.publicId&&String(record.value.publicId)===next)return;
+  for (const modal of [showEditor,showItems,showJoin,showResult,showReaders]) modal.value=false;
+  record.value=null;actionError.value='';refreshError.value='';void load();},{immediate:true});
 useRealtime(message=>{if(message.type==='invalidate'&&([resource.value,'*'].includes(message.resource)||(resource.value==='users'&&message.resource==='teams')))void load();});
 onBeforeUnmount(()=>controller?.abort());
 </script>
@@ -117,7 +122,7 @@ onBeforeUnmount(()=>controller?.abort());
           .profile-team-list(v-if="user.activeTeams?.length")
             article.profile-team-card(v-for="team in user.activeTeams" :key="team.id")
               .profile-team-heading
-                RouterLink(:to="`/teams/${team.id}`") {{ team.title }}
+                RouterLink(:to="`/teams/${team.publicId ?? team.id}`") {{ team.title }}
                 span {{ participantLabel(team.memberCount) }}
               p(v-if="team.description") {{ team.description }}
               p.profile-team-empty(v-else) У команды пока нет описания.

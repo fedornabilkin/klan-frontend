@@ -19,7 +19,7 @@ const meta = computed(() => resourceMeta[resource.value]);
 const list = useList(resource, { limit: 12 });
 const { items, loading, error, filters, page, refresh, setPage } = list;
 const pagination = list.meta;
-const { ranked: tags, counts: tagCounts, loading: tagsLoading, error: tagsError, refresh: refreshTags } = useCommunityTags();
+const { ranked: tags, counts: tagCounts, loading: tagsLoading, error: tagsError, refresh: refreshTags } = useCommunityTags(() => ['users','events','challenges','books'].includes(resource.value));
 const showEditor = ref(false);
 const sortOptions = computed(() => [{ label: 'Сначала новые', value: '-createdAt' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · А—Я`, value: 'name' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · Я—А`, value: '-name' }]);
 const statuses = computed(() => resource.value === 'feedback' ? [{label:'Все статусы',value:''},{label:'Новые',value:'open'},{label:'В работе',value:'in_progress'},{label:'Решённые',value:'resolved'},{label:'Закрытые',value:'closed'}] : resource.value === 'teams' ? [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Архив',value:'archived'}] : [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Скоро',value:'upcoming'},{label:'Завершённые',value:'completed'},{label:'Архив',value:'archived'}]);

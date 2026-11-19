@@ -115,7 +115,7 @@ async function save() {
     <template v-else>
       <div v-if="user.callsign || user.activeTeams?.length" class="identity-affiliation">
         <span v-if="user.callsign" class="identity-callsign"><span>Позывной</span> <strong>{{ user.callsign }}</strong></span>
-        <RouterLink v-for="team in user.activeTeams || []" :key="team.id" class="identity-team" :to="`/teams/${team.id}`">
+        <RouterLink v-for="team in user.activeTeams || []" :key="team.id" class="identity-team" :to="`/teams/${team.publicId ?? team.id}`">
           <Icon name="shield-halved" />{{ team.title }}
         </RouterLink>
       </div>

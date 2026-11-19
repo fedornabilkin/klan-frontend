@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onErrorCaptured, ref } from 'vue';
+import { onErrorCaptured, ref, watch } from 'vue';
 import Icon from './Icon.vue';
+const props = defineProps<{resetOn?: string}>();
 const failed = ref(false);
+watch(() => props.resetOn, () => { failed.value = false; });
 const attempt = ref(0);
 onErrorCaptured((error) => { console.error('Isolated module error', error); failed.value = true; return false; });
 function retry(): void { failed.value = false; attempt.value += 1; }

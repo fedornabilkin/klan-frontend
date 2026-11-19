@@ -56,7 +56,7 @@ NModal(:show="show" preset="card" title="Аналитика участника" 
           .participation-row(v-for="item in value.participation" :key="`${item.type}:${item.id}`")
             div
               small {{ kinds[item.type] || item.type }}
-              RouterLink(:to="`/${item.type}/${item.id}`") {{ item.title }}
+              RouterLink(:to="`/${item.type}/${item.publicId ?? item.id}`") {{ item.title }}
               small(v-if="item.start") {{ dateDay(item.start) }} — {{ dateDay(item.end) }} UTC
             StatusBadge(:status="item.status")
         EmptyState(v-else title="Записей об участии пока нет")
@@ -75,7 +75,7 @@ NModal(:show="show" preset="card" title="Аналитика участника" 
             tbody
               tr(v-for="challenge in value.challenges" :key="challenge.id")
                 th(scope="row")
-                  RouterLink(:to="`/challenges/${challenge.id}`") {{ challenge.title }}
+                  RouterLink(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
                 td {{ challenge.periodValue.toLocaleString('ru-RU') }} {{ challenge.unit }}
                 td {{ challenge.totalValue.toLocaleString('ru-RU') }} {{ challenge.unit }}
                 td {{ challenge.periodEntries }}

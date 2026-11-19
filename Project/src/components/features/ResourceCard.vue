@@ -17,7 +17,7 @@ const remainingTags = computed(() => memberTags.value.slice(3));
 </script>
 
 <template lang="pug">
-RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resource}/${item.id}`" :class="{ 'resource-card--person': resource === 'users', 'resource-card--book': resource === 'books' }")
+RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resource}/${item.publicId ?? item.id}`" :class="{ 'resource-card--person': resource === 'users', 'resource-card--book': resource === 'books' }")
   template(v-if="resource === 'users'")
     .person-heading
       Avatar(:user="user" size="lg")
@@ -56,10 +56,10 @@ RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resour
           | {{ entity.location.city }}
         span(v-else-if="resource === 'books'")
           Icon(name="book-open")
-          | Прочитали {{ entity.readers?.length || 0 }}
+          | Прочитали {{ entity.readerCount ?? entity.readers?.length ?? 0 }}
         span(v-else-if="['teams', 'challenges'].includes(resource)")
           Icon(name="users")
-          | {{ entity.participants.length }} участников
+          | {{ entity.participantCount ?? entity.participants.length }} участников
         span(v-else) {{ dateLabel(entity.createdAt) }}
         Icon(name="arrow-right")
 </template>

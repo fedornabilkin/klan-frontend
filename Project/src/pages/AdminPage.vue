@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NInput, NSelect, NSkeleton } from 'naive-ui'
 import type { Entity, Resource, User } from '@shared/contracts'
+import { communityService } from '@/services/community'
 import { useList } from '@/composables/useList'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -31,9 +32,17 @@ const deleteOpen = ref(false)
 const titleOf = (entity: Entity | User) => 'name' in entity ? entity.name : entity.title
 const descriptionOf = (entity: Entity | User) => 'bio' in entity ? entity.location.city : entity.description
 function changeResource(value: unknown) { if (typeof value === 'string' && resources.value.some(item => item.value === value)) router.replace({ query: { resource: value } }) }
-function edit(entity: Entity | User | null) { if (resource.value === 'users' && !entity) return; selected.value = entity; editorOpen.value = true }
+let editRequest = 0
+async function edit(entity: Entity | User | null) {
+  if (resource.value === 'users' && !entity) return
+  const request = ++editRequest
+  try {
+    const full = entity ? await communityService.get(resource.value, entity.id) : null
+    if (request === editRequest) { selected.value = full; editorOpen.value = true }
+  } catch (cause) { if (request === editRequest) error.value = cause instanceof Error ? cause.message : 'Не удалось открыть запись' }
+}
 function remove(entity: Entity | User) { selected.value = entity; deleteOpen.value = true }
-watch(resource, () => { selected.value = null; editorOpen.value = false; deleteOpen.value = false })
+watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value = false; deleteOpen.value = false })
 </script>
 
 <template lang="pug">
@@ -65,7 +74,7 @@ watch(resource, () => { selected.value = null; editorOpen.value = false; deleteO
       template(v-else-if="rows.length")
         .admin-row(v-for="entity in rows" :key="entity.id")
           .admin-row-main
-            RouterLink.admin-title(:to="`/${resource}/${entity.id}`") {{ titleOf(entity) }}
+            RouterLink.admin-title(:to="`/${resource}/${entity.publicId ?? entity.id}`") {{ titleOf(entity) }}
             p {{ descriptionOf(entity) || 'Описание не добавлено' }}
           StatusBadge(v-if="'status' in entity" :status="entity.status")
           span.admin-role(v-else) {{ entity.access?.level === 'moderator' ? 'Модератор' : entity.role === 'admin' ? 'Администратор' : 'Участник' }}

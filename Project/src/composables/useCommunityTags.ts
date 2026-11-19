@@ -1,10 +1,10 @@
-import { computed, onMounted, onScopeDispose, ref } from 'vue';
+import { computed, toValue, watch, type MaybeRefOrGetter, onScopeDispose, ref } from 'vue';
 import type { Tag } from '@shared/contracts';
 import { communityService } from '@/services/community';
 import { rankCommunityTags, type TagCount } from '@/domain/tagPopularity';
 import { useRealtime } from './useRealtime';
 
-export function useCommunityTags() {
+export function useCommunityTags(enabled: MaybeRefOrGetter<boolean> = true) {
   const catalog = ref<Tag[]>([]);
   const usage = ref<TagCount[]>([]);
   const loading = ref(false);
@@ -15,22 +15,28 @@ export function useCommunityTags() {
   let disposed = false;
 
   async function refresh() {
+    if (!toValue(enabled)) return;
     controller?.abort();
     const request = new AbortController();
     controller = request;
     loading.value = true;
-    const [tags, statistics] = await Promise.allSettled([
-      communityService.tags(request.signal), communityService.stats(request.signal),
-    ]);
-    if (disposed || request.signal.aborted) return;
-    if (tags.status === 'fulfilled') catalog.value = tags.value;
-    if (statistics.status === 'fulfilled') usage.value = statistics.value.interests;
-    error.value = tags.status === 'rejected' ? 'Не удалось загрузить теги.'
-      : statistics.status === 'rejected' ? 'Частота тегов временно недоступна.' : '';
+    try {
+      const rows = await communityService.tagUsage(request.signal);
+      if (disposed || request.signal.aborted) return;
+      catalog.value = rows;
+      usage.value = rows;
+      error.value = '';
+    } catch {
+      if (disposed || request.signal.aborted) return;
+      error.value = 'Не удалось загрузить теги.';
+    }
     loading.value = false;
   }
 
-  onMounted(() => { void refresh(); });
+  watch(() => toValue(enabled), active => {
+    if (active) void refresh();
+    else { controller?.abort(); loading.value = false; }
+  }, { immediate: true });
   useRealtime(message => {
     if (message.type === 'invalidate' && ['users', 'tags', '*'].includes(message.resource)) void refresh();
   });

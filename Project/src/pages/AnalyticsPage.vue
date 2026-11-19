@@ -145,7 +145,7 @@ const activityOptions = [
           h3 Команды на сейчас
           .participation-list(v-if="community.teams.length")
             .participation-row(v-for="team in community.teams" :key="team.id")
-              RouterLink(:to="`/teams/${team.id}`") {{ team.title }}
+              RouterLink(:to="`/teams/${team.publicId ?? team.id}`") {{ team.title }}
               span {{ team.participants }} · {{ team.status === 'active' ? 'активна' : 'архив' }}
           EmptyState(v-else title="Команд пока нет")
         section.analytics-panel.analytics-wide
@@ -162,7 +162,7 @@ const activityOptions = [
               tbody
                 tr(v-for="event in community.events" :key="event.id")
                   th(scope="row")
-                    RouterLink(:to="`/events/${event.id}`") {{ event.title }}
+                    RouterLink(:to="`/events/${event.publicId ?? event.id}`") {{ event.title }}
                   td {{ dateDay(event.start) }}
                   td {{ event.participants }}
           EmptyState(v-else title="Мероприятий пока нет")
@@ -182,7 +182,7 @@ const activityOptions = [
               tbody
                 tr(v-for="challenge in community.challenges" :key="challenge.id")
                   th(scope="row")
-                    RouterLink(:to="`/challenges/${challenge.id}`") {{ challenge.title }}
+                    RouterLink(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
                   td {{ challenge.participants }}
                   td {{ challenge.periodContributors }}
                   td {{ challenge.periodValue.toLocaleString('ru-RU') }} {{ challenge.unit }}

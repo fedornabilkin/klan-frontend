@@ -6,7 +6,7 @@ export interface Location { city: string; country: string; lat: number | null; l
 export interface ProfileEntry { id: string; text: string; date: string | null }
 /** Old stored profiles and version-1 exports may still contain plain strings. */
 export type ProfileEntryInput = string | ProfileEntry;
-export interface ProfileTeamSummary { id: string; title: string; description: string; memberCount: number }
+export interface ProfileTeamSummary { id: string; publicId?: number; title: string; description: string; memberCount: number }
 export interface User {
   id: string; name: string; username?: string; role: 'admin' | 'member';
   firstName?: string; lastName?: string; middleName?: string; birthDate?: string | null;
@@ -19,11 +19,12 @@ export interface User {
   stats: { events: number; challenges: number; books: number }; joinedAt: string;
 }
 export interface Item { id: string; name: string; quantity?: number }
-export interface Participation { user: User; team?: { id: string; title: string }; items?: Item[]; target?: number }
-export interface ChallengeResult { user: User; date: string; value: number; team?: { id: string; title: string } }
+export interface Participation { user: User; team?: { id: string; publicId?: number; title: string }; items?: Item[]; target?: number }
+export interface ChallengeResult { user: User; date: string; value: number; team?: { id: string; publicId?: number; title: string } }
 /** Imported values without a confirmed date are excluded from all result totals. */
-export interface ChallengePendingResult { user: User; value: number; team?: { id: string; title: string }; sourceCell: string; reason: string }
+export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
 export interface Entity {
+  publicId?: number; participantCount?: number; readerCount?: number;
   id: string; type: Exclude<Resource, 'users'>; title: string; description: string;
   status: string; category: string; tags: Tag[]; createdAt: string;
   location?: Location; schedule?: { start: string; end: string }; cover?: string;
@@ -37,11 +38,12 @@ export interface ListMeta { page: number; limit: number; total: number; pages: n
 export interface ListResponse<T> { data: T[]; meta: ListMeta }
 export interface ApiResponse<T> { data: T }
 export interface Dashboard {
+  activityTotal?: number;
   stats: { users: number; cities: number; events: number; challenges: number; teams: number };
   events: Entity[]; challenges: Entity[]; teams: Entity[]; activity: Activity[];
 }
 export interface Statistics {
   users: number; cities: { name: string; count: number }[]; interests: { name: string; count: number }[];
-  teams: { id: string; title: string; count: number }[]; achievements: { name: string; count: number }[];
+  teams: { id: string; publicId?: number; title: string; count: number }[]; achievements: { name: string; count: number }[];
   activity: { date: string; count: number }[];
 }

@@ -90,7 +90,7 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
           <tr v-for="(result, index) in selected.rows" :key="`${result.user.id}:${result.date}:${selected.first + index}`">
             <td class="daily-date"><time :datetime="result.date">{{ resultDateLabel(result.date) }}</time></td>
             <td><RouterLink :to="userPath(result.user)">{{ result.user.name }}</RouterLink></td>
-            <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
+            <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.publicId ?? result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
             <td class="daily-value">{{ result.value.toLocaleString('ru-RU') }}</td>
           </tr>
         </tbody>
@@ -115,7 +115,7 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
             <tr v-for="(result, index) in pendingSelected.rows" :key="`${result.user.id}:${result.sourceCell}:${pendingSelected.first + index}`">
               <td class="pending-source"><strong>{{ result.sourceCell }}</strong><small>{{ result.reason }}</small></td>
               <td><RouterLink :to="userPath(result.user)">{{ result.user.name }}</RouterLink></td>
-              <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
+              <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.publicId ?? result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
               <td class="daily-value">{{ result.value.toLocaleString('ru-RU') }}</td>
             </tr>
           </tbody>

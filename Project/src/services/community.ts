@@ -13,15 +13,22 @@ export const communityService = {
     return { data: response.data.map(dto => buildResource(resource, dto)), meta: response.meta };
   },
   async get(resource: Resource, id: string, signal?: AbortSignal): Promise<UserModel | CommunityEntity> {
-    const response = await api.get<ApiResponse<unknown>>(`/${resource}/${encodeURIComponent(id)}`, undefined, signal);
+    const response = await api.get<ApiResponse<unknown>>(`/${resource}/${encodeURIComponent(id)}`, {view: 'detail'}, signal);
     return buildResource(resource, response.data);
+  },
+  async tagUsage(signal?: AbortSignal) {
+    const response = await api.get<ApiResponse<unknown[]>>('/tags', {usage:1}, signal);
+    return response.data.map(row => {
+      const count = object(row).count;
+      return {...buildTag(row), count: typeof count === 'number' ? count : 0};
+    });
   },
   async tags(signal?: AbortSignal): Promise<Tag[]> {
     const response = await api.get<ApiResponse<unknown[]>>('/tags', undefined, signal);
     return response.data.map(buildTag);
   },
   async dashboard(signal?: AbortSignal): Promise<Dashboard> {
-    const response = await api.get<ApiResponse<Dashboard>>('/dashboard', undefined, signal);
+    const response = await api.get<ApiResponse<Dashboard>>('/dashboard', {view:'cards'}, signal);
     const dto = response.data;
     return { ...dto, events: dto.events.map(v => new EntityBuilder().from(v).build()), challenges: dto.challenges.map(v => new EntityBuilder().from(v).build()), teams: dto.teams.map(v => new EntityBuilder().from(v).build()), activity: dto.activity.map(buildActivity) };
   },

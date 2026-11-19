@@ -107,7 +107,7 @@ async function logout() {
     p.account-error(v-if="logoutError" role="alert") {{ logoutError }}
     main.main-content
       RouterView(v-slot="{ Component }")
-        ErrorBoundary(:key="route.path")
+        ErrorBoundary(:key="route.name" :reset-on="route.path")
           component(:is="Component")
     footer.app-footer
       span KLAN / СИЛА В ЛЮДЯХ
