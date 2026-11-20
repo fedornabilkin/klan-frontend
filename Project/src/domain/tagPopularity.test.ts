@@ -1,5 +1,6 @@
+import { formatTagFilter, parseTagFilter } from '@shared/tag-names';
 import { describe, expect, it } from 'vitest';
-import { normalizeTagQuery, rankCommunityTags, rankMemberTags } from './tagPopularity';
+import { canonicalTagNames, normalizeTagQuery, rankCommunityTags, rankMemberTags } from './tagPopularity';
 
 describe('community tag popularity', () => {
   it('ranks the complete catalog by members and retains uncommon tags for search', () => {
@@ -18,4 +19,15 @@ describe('community tag popularity', () => {
     expect(normalizeTagQuery('３Ｄ')).toBe('3d');
     expect(rankCommunityTags([{ id: 'x', name: 'Полёты' }], [{ name: 'ПОЛЕТЫ', count: 4 }])[0]?.count).toBe(4);
   });
+});
+
+it('restores names from imported bookmarks and preserves meaningful punctuation', () => {
+  const catalog = [{ id:'old-key', name:'Бег' }, { id:'lang', name:'C#' }];
+  expect(canonicalTagNames(['#old-key','бег','C#','unknown'],catalog)).toEqual(['Бег','C#','unknown']);
+});
+
+it('round-trips legacy punctuation in names alongside ordinary tags', () => {
+  const names = ['C#','C++','Дизайн, мода','Студия "А"'];
+  expect(parseTagFilter(formatTagFilter(names))).toEqual(names);
+  expect(formatTagFilter(['Бег','Музыка'])).toBe('Бег,Музыка');
 });

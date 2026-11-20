@@ -13,8 +13,8 @@ const query = defineModel<string>('query', { required: true });
 const selected = defineModel<string[]>({ required: true });
 const emit = defineEmits<{ retry: [] }>();
 const popular = computed(() => props.tags.filter(tag => tag.count > 0).slice(0, 4));
-function toggle(id: string) {
-  selected.value = selected.value.includes(id) ? selected.value.filter(value => value !== id) : [...selected.value, id];
+function toggle(name: string) {
+  selected.value = selected.value.includes(name) ? selected.value.filter(value => value !== name) : [...selected.value, name];
 }
 </script>
 
@@ -29,7 +29,7 @@ function toggle(id: string) {
       <CommunityTagSelect v-model="selected" :tags="tags" :loading="loading" />
     </div>
     <div class="popular-tags" role="group" aria-label="Фильтры по тегам">
-      <button v-for="tag in popular" :key="tag.id" type="button" class="popular-tag" :class="{ selected: selected.includes(tag.id) }" :aria-pressed="selected.includes(tag.id)" :data-tooltip="`${tag.name}: ${tag.count} участников`" @click="toggle(tag.id)">
+      <button v-for="tag in popular" :key="tag.id" type="button" class="popular-tag" :class="{ selected: selected.includes(tag.name) }" :aria-pressed="selected.includes(tag.name)" :data-tooltip="`${tag.name}: ${tag.count} участников`" @click="toggle(tag.name)">
         <span>{{ tag.name }}</span><span class="tag-count">{{ tag.count }}</span>
       </button>
       <button v-if="selected.length" type="button" class="clear-tags" @click="selected = []">Сбросить теги</button>

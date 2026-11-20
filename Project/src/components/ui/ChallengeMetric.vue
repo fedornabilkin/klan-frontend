@@ -8,7 +8,7 @@ const hint = computed(() => [props.label, [number.value, props.unit].filter(Bool
 </script>
 
 <template>
-  <span class="challenge-metric" tabindex="0" role="img" :aria-label="hint" :data-tooltip="hint">
+  <span class="challenge-metric" tabindex="0" role="img" data-tooltip-detail :aria-label="hint" :data-tooltip="hint">
     <Icon :name="icon" /><span>{{ number }}</span>
   </span>
 </template>

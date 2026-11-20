@@ -15,10 +15,11 @@ async function save(){if(value.value===null||!date.value){error.value='Укаж�
 <template lang="pug">
 NModal(:show="show" preset="card" title="Мой результат" :style="{width:'28rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
   NForm(label-placement="top" @submit.prevent="save")
-    NFormItem(label="За какую дату")
-      input.result-date(v-model="date" type="date" :min="minimum" :max="maximum" required)
-    NFormItem(:label="`Результат · ${entity.goal?.unit || 'ед.'}`")
-      NumberField(v-model="value" required aria-label="Результат" :min="0" :max="entity.category === 'attendance' ? 1 : 1000000" :step="entity.category === 'distance' ? 0.01 : 1")
+    .result-fields
+      NFormItem(label="За какую дату")
+        input.result-date(v-model="date" type="date" :min="minimum" :max="maximum" required)
+      NFormItem(:label="`Результат · ${entity.goal?.unit || 'ед.'}`")
+        NumberField(v-model="value" required aria-label="Результат" :min="0" :max="entity.category === 'attendance' ? 1 : 1000000" :step="entity.category === 'distance' ? 0.01 : 1")
     p.modal-intro(v-if="entity.category === 'attendance'") 1 — был на мероприятии, 0 — не участвовал.
     p.modal-intro Можно изменить результат за прошедший день до завершения челленджа. Новое значение заменит предыдущее за эту дату.
     p.modal-error(v-if="error" role="alert") {{ error }}
@@ -27,5 +28,6 @@ NModal(:show="show" preset="card" title="Мой результат" :style="{wid
       NButton(type="primary" attr-type="submit" :loading="busy") Сохранить
 </template>
 <style scoped>
+.result-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.result-fields :deep(.n-form-item){min-width:0}@media(max-width:35rem){.result-fields{grid-template-columns:1fr;gap:0}}
 .result-date{display:block;width:100%;background:#252323;border:1px solid #484039;border-radius:.4rem;color:#eee3da;color-scheme:dark;padding:.65rem;font:inherit;box-sizing:border-box}.modal-intro{font-size:.8rem;line-height:1.6;color:#a49a93}.modal-actions{display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.5rem}.modal-error{color:#f2a19b;font-size:.8rem}
 </style>

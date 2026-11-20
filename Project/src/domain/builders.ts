@@ -177,7 +177,7 @@ export class CommunityEntity implements Entity {
   results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
   constructor(data: Entity) { Object.assign(this, data); }
   get displayName(): string { return this.title; }
-  publicId?: number; participantCount?: number; readerCount?: number;
+  publicId?: number; participantCount?: number; teamCount?: number; readerCount?: number;
   get memberCount(): number { return this.participantCount ?? this.participants.length; }
   get isActive(): boolean { return this.status === 'active'; }
   hasParticipant(userId: string): boolean { return this.participants.some(p => p.user.id === userId); }
@@ -208,7 +208,7 @@ export class EntityBuilder {
       return entry;
     }
     return new CommunityEntity({
-      id: string(dto.id, 'entity.id'), publicId: publicId(dto.publicId, 'entity.publicId'), participantCount: dto.participantCount == null ? undefined : number(dto.participantCount, 'participantCount'), readerCount: dto.readerCount == null ? undefined : number(dto.readerCount, 'readerCount'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
+      id: string(dto.id, 'entity.id'), publicId: publicId(dto.publicId, 'entity.publicId'), participantCount: dto.participantCount == null ? undefined : number(dto.participantCount, 'participantCount'), teamCount: dto.teamCount == null ? undefined : number(dto.teamCount, 'teamCount'), readerCount: dto.readerCount == null ? undefined : number(dto.readerCount, 'readerCount'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
       description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', 'active'),
       category: string(dto.category, 'entity.category', ''), tags: array(dto.tags, buildTag, 'entity.tags'),
       createdAt: string(dto.createdAt, 'entity.createdAt', ''),

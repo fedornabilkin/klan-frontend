@@ -42,12 +42,12 @@ const name = computed(() => displayProfileName(props.user));
 a.user-avatar:hover .user-avatar-name{color:var(--accent)}
 .user-avatar-copy{display:flex;flex-direction:column;min-width:0;gap:.12rem;line-height:1.35;text-align:start}
 .user-avatar-name{font-weight:700;overflow-wrap:anywhere}
-.user-avatar-picture{position:relative;display:inline-flex;flex:none;--team-size:.95rem;--dot-size:.65rem}
-.picture-md{--team-size:1.08rem;--dot-size:.78rem}.picture-lg{--team-size:1.5rem;--dot-size:1rem}
-.user-avatar-team,.user-avatar-presence{position:absolute;box-sizing:border-box;border-radius:50%;box-shadow:0 0 0 2px var(--surface,#191b19)}
-.user-avatar-team{top:-.12rem;left:-.16rem;width:var(--team-size);height:var(--team-size);display:grid;place-items:center;background:#3c2c20;color:#ffb575}
+.user-avatar-picture{position:relative;display:inline-flex;flex:none;--team-size:.83rem;--dot-size:.52rem}
+.picture-md{--team-size:.98rem;--dot-size:.62rem}.picture-lg{--team-size:1.3rem;--dot-size:.82rem}
+.user-avatar-team,.user-avatar-presence{position:absolute;box-sizing:border-box;border-radius:50%;box-shadow:0 0 0 1.5px var(--surface,#191b19)}
+.user-avatar-team{top:9%;left:9%;transform:translate(-50%,-50%);width:var(--team-size);height:var(--team-size);display:grid;place-items:center;background:#3c2c20;color:#ffb575}
 .user-avatar-team :deep(svg){width:65%;height:65%}
-.user-avatar-presence{right:0;bottom:0;width:var(--dot-size);height:var(--dot-size);background:#838784}
+.user-avatar-presence{right:10%;bottom:10%;transform:translate(50%,50%);width:var(--dot-size);height:var(--dot-size);background:#838784}
 .user-avatar-presence.online{background:#77d79a}.user-avatar-presence.unknown{background:#242724;border:1.5px solid #939992}
 .user-avatar-callsign{font-size:.78em;color:#b5ada5;font-weight:500;overflow-wrap:anywhere}
 </style>

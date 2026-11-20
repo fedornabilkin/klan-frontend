@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NButton, NInput, NSelect, NSkeleton } from 'naive-ui';
 import type { Resource } from '@shared/contracts';
+import { formatTagFilter, parseTagFilter } from '@shared/tag-names';
+import { canonicalTagNames } from '@/domain/tagPopularity';
 import { useList } from '@/composables/useList';
 import { useCommunityTags } from '@/composables/useCommunityTags';
 import Icon from '@/components/ui/Icon.vue';
@@ -23,8 +25,13 @@ const { ranked: tags, counts: tagCounts, loading: tagsLoading, error: tagsError,
 const showEditor = ref(false);
 const sortOptions = computed(() => [{ label: 'Сначала новые', value: '-createdAt' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · А—Я`, value: 'name' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · Я—А`, value: '-name' }]);
 const statuses = computed(() => resource.value === 'feedback' ? [{label:'Все статусы',value:''},{label:'Новые',value:'open'},{label:'В работе',value:'in_progress'},{label:'Решённые',value:'resolved'},{label:'Закрытые',value:'closed'}] : resource.value === 'teams' ? [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Архив',value:'archived'}] : [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Скоро',value:'upcoming'},{label:'Завершённые',value:'completed'},{label:'Архив',value:'archived'}]);
-const selectedTags = computed({ get: () => (filters.tag || '').split(',').filter(Boolean), set: (value: string[]) => { filters.tag = value.join(','); } });
-function toggleTag(id: string) { filters.tag = selectedTags.value.includes(id) ? selectedTags.value.filter(t=>t!==id).join(',') : [...selectedTags.value,id].join(','); }
+const selectedTags = computed({ get: () => parseTagFilter(filters.tag), set: (value: string[]) => { filters.tag = formatTagFilter(value); } });
+watch([tags, selectedTags], ([catalog, selected]) => {
+  if (catalog.length && selected.length) filters.tag = formatTagFilter(canonicalTagNames(selected, catalog));
+});
+function toggleTag(name: string) {
+  selectedTags.value = selectedTags.value.includes(name) ? selectedTags.value.filter(tag => tag !== name) : [...selectedTags.value, name];
+}
 function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filters.category=''; filters.city=''; filters.sort=resource.value === 'teams' ? 'name' : '-createdAt'; }
 </script>
 
@@ -56,7 +63,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
       Icon(name="xmark")
   .filter-tags(v-if="tags.length && ['events','challenges','books'].includes(resource)")
     button.filter-tag(type="button" :class="{ selected: !selectedTags.length }" @click="filters.tag = ''") Все интересы
-    button.filter-tag(v-for="tag in tags.slice(0, 12)" :key="tag.id" type="button" :class="{selected:selectedTags.includes(tag.id)}" :aria-pressed="selectedTags.includes(tag.id)" @click="toggleTag(tag.id)") {{ tag.name }}
+    button.filter-tag(v-for="tag in tags.slice(0, 12)" :key="tag.id" type="button" :class="{selected:selectedTags.includes(tag.name)}" :aria-pressed="selectedTags.includes(tag.name)" @click="toggleTag(tag.name)") {{ tag.name }}
   .list-error(v-if="error" role="alert")
     p {{ error }}
     NButton(@click="refresh") Попробовать снова

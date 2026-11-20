@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatTagFilter } from '@shared/tag-names';
 import { searchTerm, useDebouncedValue } from '@/composables/useFilterDelay';
 import { computed, ref, watch } from 'vue';
 import { NButton, NInput, NPopover, NSpin } from 'naive-ui';
@@ -84,7 +85,7 @@ function addNewTag() { if (canCreate.value) void addByName(name.value); }
     </div>
     <div v-if="user.tags.length" class="selected-tags" :aria-busy="busy">
       <span v-for="tag in user.tags" :key="tag.id" class="profile-tag">
-        <RouterLink :to="{ path: '/users', query: { tag: tag.id } }">{{ tag.name }}</RouterLink>
+        <RouterLink :to="{ path: '/users', query: { tag: formatTagFilter([tag.name]) } }">{{ tag.name }}</RouterLink>
         <button v-if="editable" type="button" :disabled="busy" :aria-label="`Удалить тег ${tag.name}`" @click="update(tag, false)"><Icon name="xmark" /></button>
       </span>
     </div>

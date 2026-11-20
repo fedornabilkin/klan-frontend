@@ -20,3 +20,13 @@ export function newTagNameError(value: string): string | undefined {
   }
   return undefined;
 }
+
+/** Preserve punctuation in older catalog names while accepting comma-separated bookmarks. */
+export function parseTagFilter(value: string): string[] {
+  const fields = value.match(/(?:"(?:[^"]|"")*"|[^,]+)(?=,|$)/g) ?? [];
+  return fields.map(field => field.startsWith('"') && field.endsWith('"') ? field.slice(1, -1).replace(/""/g, '"') : field).filter(Boolean);
+}
+
+export function formatTagFilter(names: readonly string[]): string {
+  return names.map(name => /[",]/.test(name) ? '"' + name.replace(/"/g, '""') + '"' : name).join(',');
+}

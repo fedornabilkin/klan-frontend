@@ -11,6 +11,8 @@ import UserAvatar from '@/components/ui/UserAvatar.vue'
 import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import WorldMap from '@/components/WorldMap.vue'
 import type { MapPoint } from '@/domain/mapMarkers'
+import { formatTagFilter, parseTagFilter } from '@shared/tag-names'
+import { canonicalTagNames } from '@/domain/tagPopularity'
 import CommunityTagFilter from '@/components/features/CommunityTagFilter.vue'
 import { useCommunityTags } from '@/composables/useCommunityTags'
 
@@ -26,7 +28,7 @@ const points = ref<MapPoint[]>([])
 const { ranked: rankedTags, loading: tagsLoading, error: tagsError, refresh: refreshTags } = useCommunityTags()
 const mapLoading = ref(false)
 const q = ref(String(route.query.q || ''))
-const selectedTags = ref(String(route.query.tag || '').split(',').filter(Boolean))
+const selectedTags = ref(parseTagFilter(String(route.query.tag || '')))
 const activity = ref<Activity[]>([])
 const activityPage = ref(1)
 const activityPages = ref(1)
@@ -78,9 +80,14 @@ async function loadActivity(more = false) {
   } catch(error) { if (!disposed) activityError.value = errorMessage(error) }
   finally { if (!disposed) activityLoading.value = false }
 }
+watch([rankedTags, selectedTags], ([catalog, selected]) => {
+  if (!catalog.length || !selected.length) return
+  const names = canonicalTagNames(selected, catalog)
+  if (formatTagFilter(names) !== formatTagFilter(selected)) selectedTags.value = names
+})
 watch([q,selectedTags], () => {
   filterDelay.cancel()
-  const text = searchTerm(q.value), tags = selectedTags.value.join(',')
+  const text = searchTerm(q.value), tags = formatTagFilter(selectedTags.value)
   if (text === searchTerm(String(route.query.q || '')) && tags === String(route.query.tag || '')) return
   filterDelay.schedule(() => { void router.replace({query:{...route.query, q:text || undefined, tag:tags || undefined}}) })
 }, {deep:true})
@@ -88,7 +95,7 @@ watch([() => route.query.q, () => route.query.tag], () => {
   filterDelay.cancel()
   const nextQ = searchTerm(String(route.query.q || '')), nextTags = String(route.query.tag || '')
   if (searchTerm(q.value) !== nextQ) q.value = nextQ
-  if (selectedTags.value.join(',') !== nextTags) selectedTags.value = nextTags.split(',').filter(Boolean)
+  if (formatTagFilter(selectedTags.value) !== nextTags) selectedTags.value = parseTagFilter(nextTags)
   void loadMap()
 })
 onMounted(() => {
@@ -137,7 +144,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); mapController?.abort()
           span
             i.legend-dot
             | {{ matchingCount }} участников · {{ points.length }} городов
-          RouterLink.text-link(:to="{path:'/users',query:{q:q || undefined,tag:selectedTags.join(',') || undefined}}") К списку
+          RouterLink.text-link(:to="{path:'/users',query:{q:q || undefined,tag:formatTagFilter(selectedTags) || undefined}}") К списку
             Icon(name="arrow-right")
       section.panel
         .panel-heading

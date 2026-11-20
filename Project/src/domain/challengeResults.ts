@@ -1,28 +1,52 @@
-import type { ChallengePendingResult, ChallengeResult } from '@shared/contracts';
+import type { Entity, User } from '@shared/contracts';
 
-export const SOLO_RESULT_TEAM = '__solo__';
+const monthLabel = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const names = new Intl.Collator('ru', { numeric: true });
+const dayMs = 86_400_000;
 
-export interface ChallengeResultFilters {
-  userId?: string | null;
-  teamId?: string | null;
-  from?: string;
-  to?: string;
+export function challengeCalendar(entity: Pick<Entity, 'schedule' | 'participants' | 'results'>, today: string) {
+  const rows = new Map<string, { user: User; values: Map<string, number> }>();
+  const results = entity.results ?? [];
+  let first = '', last = '', total = 0;
+  function includeDate(value?: string) {
+    const date = value?.slice(0, 10);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    if (!first || date < first) first = date;
+    if (date > last) last = date;
+  }
+  function rowFor(user: User) {
+    let row = rows.get(user.id);
+    if (!row) {
+      row = { user, values: new Map<string, number>() };
+      rows.set(user.id, row);
+    }
+    return row;
+  }
+  includeDate(entity.schedule?.start);
+  includeDate(entity.schedule?.end);
+  for (const participant of entity.participants) rowFor(participant.user);
+  for (const result of results) {
+    includeDate(result.date);
+    const values = rowFor(result.user).values;
+    values.set(result.date, (values.get(result.date) ?? 0) + result.value);
+    total += result.value;
+  }
+  if (!first) includeDate(today);
+  const start = Date.parse(first.slice(0, 7) + '-01T00:00:00Z');
+  const end = new Date(last.slice(0, 7) + '-01T00:00:00Z');
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  const days: string[] = [], months: { key: string; label: string; count: number }[] = [];
+  for (let time = start; time < end.getTime(); time += dayMs) {
+    const date = new Date(time), iso = date.toISOString().slice(0, 10);
+    if (date.getUTCDate() === 1) months.push({ key: iso.slice(0, 7), label: monthLabel.format(date), count: 0 });
+    months[months.length - 1]!.count++;
+    days.push(iso);
+  }
+  return { days, months, total, count: results.length,
+    rows: [...rows.values()].sort((a, b) => names.compare(a.user.name, b.user.name) || a.user.id.localeCompare(b.user.id)) };
 }
 
-/** Filter the historical team on each result, not the user's current team. */
-export function filterChallengeResults(results: readonly ChallengeResult[], filters: ChallengeResultFilters): ChallengeResult[] {
-  return results.filter(result =>
-    (!filters.userId || result.user.id === filters.userId)
-    && (!filters.teamId || (result.team?.id ?? SOLO_RESULT_TEAM) === filters.teamId)
-    && (!filters.from || result.date >= filters.from)
-    && (!filters.to || result.date <= filters.to),
-  ).sort((left, right) => right.date.localeCompare(left.date)
-    || left.user.name.localeCompare(right.user.name, 'ru')
-    || left.user.id.localeCompare(right.user.id)
-    || (left.team?.id ?? '').localeCompare(right.team?.id ?? ''));
-}
-
-/** Totals cover every filtered row, even when only one page is rendered. */
+/** Totals cover every row, even when only one page is rendered. */
 export function paginateChallengeResults<T extends { value: number }>(results: readonly T[], requestedPage: number, size = 25) {
   const pageSize = Number.isSafeInteger(size) && size > 0 ? size : 25;
   const total = results.length;
@@ -35,19 +59,4 @@ export function paginateChallengeResults<T extends { value: number }>(results: r
     first: total ? offset + 1 : 0,
     last: Math.min(total, offset + pageSize),
   };
-}
-
-/** Unresolved rows have no date, so a date range must never silently classify them. */
-export function filterPendingChallengeResults(results: readonly ChallengePendingResult[], filters: Pick<ChallengeResultFilters, 'userId' | 'teamId'>): ChallengePendingResult[] {
-  return results.filter(result => (!filters.userId || result.user.id === filters.userId)
-    && (!filters.teamId || (result.team?.id ?? SOLO_RESULT_TEAM) === filters.teamId))
-    .sort((left, right) => left.user.name.localeCompare(right.user.name, 'ru')
-      || left.user.id.localeCompare(right.user.id)
-      || left.sourceCell.localeCompare(right.sourceCell, 'ru', { numeric: true }));
-}
-
-/** A result is a calendar day, not a timestamp to shift into the viewer's zone. */
-export function resultDateLabel(value: string): string {
-  const [year, month, day] = value.split('-');
-  return `${day}.${month}.${year}`;
 }

@@ -28,3 +28,11 @@ export function rankMemberTags(tags: readonly Tag[], counts: ReadonlyMap<string,
   return [...new Map(tags.map(tag => [tag.id, tag])).values()]
     .sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0) || a.name.localeCompare(b.name, 'ru'));
 }
+
+export function canonicalTagNames(values: readonly string[], catalog: readonly Tag[]): string[] {
+  const exactNames = new Set(catalog.map(tag => tag.name));
+  const byName = new Map(catalog.map(tag => [normalizeTagQuery(tag.name), tag.name]));
+  const byId = new Map(catalog.map(tag => [tag.id, tag.name]));
+  return [...new Set(values.map(value => exactNames.has(value) ? value : byId.get(value) ?? byName.get(normalizeTagQuery(value))
+    ?? byId.get(value.replace(/^#/, '')) ?? value))];
+}

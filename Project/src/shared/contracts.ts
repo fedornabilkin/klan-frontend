@@ -31,7 +31,7 @@ export interface ChallengeResult { user: User; date: string; value: number; team
 /** Imported values without a confirmed date are excluded from all result totals. */
 export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
 export interface Entity {
-  publicId?: number; participantCount?: number; readerCount?: number;
+  publicId?: number; participantCount?: number; teamCount?: number; readerCount?: number;
   id: string; type: Exclude<Resource, 'users'>; title: string; description: string;
   status: string; category: string; tags: Tag[]; createdAt: string;
   location?: Location; schedule?: { start: string; end: string }; cover?: string;
