@@ -25,6 +25,39 @@ function write(path, content) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content, { mode: 0o600 });
 }
+test('shared nginx tuning preserves other sites and restores the config on reload failure', { skip: unavailable }, context => {
+  const root = mkdtempSync(join(tmpdir(), 'klan-capacity-'));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const config = join(root, 'nginx.conf'), script = join(root, 'tune.sh');
+  const original = 'worker_processes auto;\nevents {\n  worker_connections 768; # existing\n}\nhttp { include sites-enabled/*; }\n';
+  const code = readFileSync(join(deployDirectory, 'configure-connections.sh'), 'utf8')
+    .replace('config=/etc/nginx/nginx.conf', 'config="$TEST_DIR/nginx.conf"')
+    .replace('$EUID == 0 && ', '').replace('/run/lock/klan-nginx-capacity.lock', '"$TEST_DIR/lock"');
+  write(script, code);
+  const run = (fail = '') => spawnSync(bash, ['-c', `
+    flock() { :; }
+    nginx() { test -s "$3"; }
+    systemctl() {
+      if [[ "$1" == reload ]]; then
+        echo reload >> "$TEST_DIR/reloads"
+        if [[ "$FAIL_RELOAD" == yes ]] && grep -q 'worker_connections 4096' "$TEST_DIR/nginx.conf"; then return 1; fi
+      fi
+    }
+    source "$1"
+  `, 'test', shellPath(script)], { encoding: 'utf8', env: { ...bashEnvironment, TEST_DIR: shellPath(root), FAIL_RELOAD: fail } });
+  write(config, original);
+  assert.notEqual(run('yes').status, 0);
+  assert.equal(readFileSync(config, 'utf8'), original);
+  const good = run();
+  assert.equal(good.status, 0, good.stderr);
+  const tuned = original.replace('768;', '4096;') + 'worker_rlimit_nofile 8192;\n';
+  assert.equal(readFileSync(config, 'utf8'), tuned);
+  assert.equal(run().status, 0);
+  assert.equal(readFileSync(join(root, 'reloads'), 'utf8').trim().split('\n').length, 3);
+  write(config, tuned.replace('4096', '12000').replace('8192', '20000'));
+  assert.equal(run().status, 0);
+  assert.ok(readFileSync(config, 'utf8').includes('worker_connections 12000;'));
+});
 // HTTP is always fake. Linux uses real rsync when installed; Windows uses this mirror.
 const helper = [
   "import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, rmSync, cpSync, chmodSync } from 'node:fs';",
