@@ -23,6 +23,7 @@ export interface User {
 export interface Item { id: string; name: string; quantity?: number }
 export type TeamRole = 'captain' | 'deputy' | 'member';
 export interface TeamChallengeSummary {
+  members?: number; personalTarget?: number | null;
   id: string; publicId?: number; title: string; score: number; target: number | null; unit: string;
 }
 export interface Participation { user: User; teamRole?: TeamRole; team?: { id: string; publicId?: number; title: string }; items?: Item[]; target?: number }
@@ -37,6 +38,7 @@ export interface Entity {
   participants: Participation[]; author?: User; motto?: string; content?: string;
   goal?: { target: number; unit: string; scope?: 'participant' }; results?: ChallengeResult[];
   teamChallenges?: TeamChallengeSummary[];
+  activeTeamChallenges?: TeamChallengeSummary[];
   /** Visible team directory included with compact challenge details. */
   challengeTeams?: NonNullable<Participation['team']>[];
   pendingResults?: ChallengePendingResult[];

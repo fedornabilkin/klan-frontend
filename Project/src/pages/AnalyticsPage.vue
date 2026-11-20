@@ -210,7 +210,7 @@ const activityOptions = [
         article.member-card(v-for="member in members.data" :key="member.user.id")
           .member-name
             UserAvatar(:user="member.user")
-              small {{ [member.user.location.city,member.user.location.country].filter(Boolean).join(', ') || 'География не указана' }}
+            small {{ [member.user.location.city,member.user.location.country].filter(Boolean).join(', ') || 'География не указана' }}
           dl.member-numbers
             div
               dt Действий / дней за период

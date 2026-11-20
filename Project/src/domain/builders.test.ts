@@ -102,6 +102,14 @@ describe('DTO → Builder → Domain', () => {
     expect(entity.hasParticipant('u1')).toBe(true);
     expect(() => new EntityBuilder().from({ id: 'e1', type: 'unknown', title: 'Bad' }).build()).toThrow(InvalidDtoError);
   });
+  it('keeps challenge headcounts separate from the current team roster and supports older summaries', () => {
+    const summary = { id:'run', title:'Дистанция', target:20, score:25, unit:'км' };
+    const team = new EntityBuilder().from({id:'t',type:'teams',title:'Команда', participants:[],
+      teamChallenges:[summary], activeTeamChallenges:[{...summary,id:'walk',personalTarget:10,members:2}]}).build();
+    expect(team.activeTeamChallenges?.[0]).toMatchObject({members:2,personalTarget:10,score:25,target:20});
+    expect(team.teamChallenges?.[0]?.members).toBeUndefined();
+    expect(team.teamChallenges?.[0]?.personalTarget).toBeNull();
+  });
   it('preserves individual targets and undated source values without adding them to dated results', () => {
     const source = {
       id: 'c1', type: 'challenges', title: 'Октябрь',

@@ -8,7 +8,7 @@ import {
   faFire, faFlag, faGear, faGlobe, faHouse, faLayerGroup, faList, faLocationDot, faLock, faMagnifyingGlass,
   faMap, faMedal, faMessage, faMinus, faMountain, faMountainSun, faNewspaper, faPaperPlane, faPen, faPeopleGroup, faPlus, faQuoteLeft,
   faRightFromBracket, faRocket, faRotateRight, faScroll, faSearch, faShield, faShieldHalved, faSliders, faStar,
-  faTags, faTent, faThumbsUp, faTrash, faTrophy, faUpload, faUser, faUserPlus, faUsers, faXmark,
+  faTags, faTent, faThumbsUp, faTrash, faTrophy, faUpload, faUser, faUserPlus, faUserSecret, faUserTie, faUsers, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
@@ -29,7 +29,7 @@ const icons: Record<string, IconDefinition> = {
   'right-from-bracket': faRightFromBracket, logout: faRightFromBracket, rocket: faRocket, 'rotate-right': faRotateRight,
   refresh: faRotateRight, shield: faShield, 'shield-halved': faShieldHalved, sliders: faSliders, star: faStar,
   tent: faTent, 'thumbs-up': faThumbsUp, trash: faTrash, 'trash-can': faTrash, trophy: faTrophy, upload: faUpload,
-  user: faUser, 'user-plus': faUserPlus, users: faUsers, xmark: faXmark, telegram: faPaperPlane,
+  user: faUser, 'user-plus': faUserPlus, 'user-tie': faUserTie, 'user-secret': faUserSecret, users: faUsers, xmark: faXmark, telegram: faPaperPlane,
 };
 const icon = computed(() => icons[props.name] ?? faCircleInfo);
 const style = computed(() => props.size ? { fontSize: typeof props.size === 'number' ? `${props.size}rem` : props.size } : undefined);

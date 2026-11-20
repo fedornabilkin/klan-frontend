@@ -1,5 +1,5 @@
 import { latestProfileDate } from '@shared/profile-identity';
-import type { Activity, ChallengePendingResult, ChallengeResult, Entity, Item, Location, Participation, ProfileEntry, ProfileEntryInput, ProfileTeamSummary, Resource, Tag, User } from '@shared/contracts';
+import type { Activity, ChallengePendingResult, ChallengeResult, Entity, Item, Location, Participation, ProfileEntry, ProfileEntryInput, ProfileTeamSummary, Resource, Tag, TeamChallengeSummary, User } from '@shared/contracts';
 import { accessLevels, capabilities, type AccessSummary } from '@shared/access';
 import { isCalendarDate, normalizeProfileEntries } from '@shared/profile-entries';
 
@@ -136,6 +136,15 @@ function buildTeam(value: unknown): { id: string; publicId?: number; title: stri
   const dto = object(value, 'team');
   return { id: string(dto.id, 'team.id'), publicId: publicId(dto.publicId, 'team.publicId'), title: string(dto.title, 'team.title') };
 }
+function buildTeamChallenge(value: unknown): TeamChallengeSummary {
+  const row = object(value, 'teamChallenge');
+  return {
+    id: string(row.id, 'challenge.id'), publicId: publicId(row.publicId, 'challenge.publicId'), title: string(row.title, 'challenge.title'),
+    score: number(row.score, 'challenge.score'), target: row.target == null ? null : number(row.target, 'challenge.target'), unit: string(row.unit, 'challenge.unit'),
+    members: row.members == null ? undefined : number(row.members, 'challenge.members'),
+    personalTarget: row.personalTarget == null ? null : number(row.personalTarget, 'challenge.personalTarget'),
+  };
+}
 function buildParticipation(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): Participation {
   const dto = object(value, 'participant');
   const target = dto.target == null ? undefined : number(dto.target, 'participant.target');
@@ -162,6 +171,7 @@ export class CommunityEntity implements Entity {
   id!: string; type!: Entity['type']; title!: string; description!: string; status!: string; category!: string;
   tags!: Tag[]; createdAt!: string; location?: Location; schedule?: Entity['schedule']; cover?: string;
   teamChallenges?: Entity['teamChallenges'];
+  activeTeamChallenges?: Entity['activeTeamChallenges'];
   challengeTeams?: NonNullable<Participation['team']>[];
   participants!: Participation[]; author?: User; motto?: string; content?: string; goal?: Entity['goal'];
   results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
@@ -206,11 +216,8 @@ export class EntityBuilder {
       schedule: schedule ? { start: string(schedule.start, 'schedule.start'), end: string(schedule.end, 'schedule.end') } : undefined,
       cover: dto.cover == null ? undefined : string(dto.cover, 'entity.cover'),
       challengeTeams: type === 'challenges' ? teams.filter((t): t is NonNullable<typeof t> => !!t) : undefined,
-      teamChallenges: dto.teamChallenges == null ? undefined : array(dto.teamChallenges, value => {
-        const row = object(value, 'teamChallenge');
-        return { id: string(row.id, 'challenge.id'), publicId: publicId(row.publicId, 'challenge.publicId'), title: string(row.title, 'challenge.title'),
-          score: number(row.score, 'challenge.score'), target: row.target == null ? null : number(row.target, 'challenge.target'), unit: string(row.unit, 'challenge.unit') };
-      }, 'teamChallenges'),
+      teamChallenges: dto.teamChallenges == null ? undefined : array(dto.teamChallenges, buildTeamChallenge, 'teamChallenges'),
+      activeTeamChallenges: dto.activeTeamChallenges == null ? undefined : array(dto.activeTeamChallenges, buildTeamChallenge, 'activeTeamChallenges'),
       participants: array(dto.participants, value => buildParticipation(value, person, team), 'participants'),
       author: dto.author == null ? undefined : person(dto.author),
       motto: dto.motto == null ? undefined : string(dto.motto, 'motto'), content: dto.content == null ? undefined : string(dto.content, 'content'),

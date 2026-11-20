@@ -7,7 +7,8 @@ defineProps<{show:boolean;readers:User[]}>();const emit=defineEmits<{'update:sho
 <template lang="pug">
 NModal(:show="show" preset="card" title="Уже прочитали" :style="{width:'29rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
   .reader-list
-    UserAvatar.reader(v-for="user in readers" :key="user.id" :user="user" @click="emit('update:show',false)")
+    .reader(v-for="user in readers" :key="user.id")
+      UserAvatar(:user="user" @click="emit('update:show',false)")
       small(v-if="user.location.city") {{ user.location.city }}
     p(v-if="!readers.length") Станьте первым, кто прочитает эту книгу.
 </template>

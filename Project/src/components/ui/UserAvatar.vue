@@ -21,7 +21,7 @@ const name = computed(() => displayProfileName(props.user));
     <span class="user-avatar-copy">
       <span class="user-avatar-name">{{ name }}
         <span v-if="user.hasActiveTeam ?? !!user.activeTeams?.length" class="user-avatar-team" role="img"
-          aria-label="В активной команде" title="В активной команде"><Icon name="shield-halved" /></span>
+          aria-label="В активной команде" title="В активной команде"><Icon name="users" /></span>
       </span>
       <span v-if="user.callsign" class="user-avatar-callsign">{{ user.callsign }}</span>
       <slot />

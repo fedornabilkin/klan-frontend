@@ -22,6 +22,7 @@ import EventItemsModal from '@/components/features/EventItemsModal.vue';
 import ChallengeJoinModal from '@/components/features/ChallengeJoinModal.vue';
 import ChallengeResultModal from '@/components/features/ChallengeResultModal.vue';
 import { challengeStandings } from '@/domain/challengeStandings';
+import TeamChallengeProgress from '@/components/features/TeamChallengeProgress.vue';
 import TeamRoster from '@/components/features/TeamRoster.vue';
 import ChallengeStandings from '@/components/features/ChallengeStandings.vue';
 import ChallengeResultsSection from '@/components/features/ChallengeResultsSection.vue';
@@ -170,18 +171,23 @@ onBeforeUnmount(()=>controller?.abort());
           Icon(name="pen")
         | Редактировать
     .action-error(v-if="actionError" role="alert") {{ actionError }}
-    .detail-columns
+    .detail-columns(:class="{ 'detail-columns--team': resource === 'teams' }")
       .detail-main
         section.detail-panel
           .details-heading
             h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
-            span.challenge-participation(v-if="resource === 'challenges' && participant" :title="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
+            span.challenge-participation(v-if="resource === 'teams' && participant")
+              Icon(name="circle-check")
+              | Вы участвуете
+            NButton(v-else-if="resource === 'teams' && !ended" type="primary" size="small" :loading="busy" @click="join") Вступить в команду
+            span.challenge-participation(v-else-if="resource === 'challenges' && participant" :title="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
               Icon(name="circle-check")
               | Участвую
           p.prose {{ entity.description }}
           p.prose(v-if="entity.content") {{ entity.content }}
           .profile-tags(v-if="entity.tags.length")
             span(v-for="tag in entity.tags" :key="tag.id") {{ tag.name }}
+          TeamChallengeProgress(v-if="resource === 'teams'" :key="entity.id" :active="entity.activeTeamChallenges" :finished="entity.teamChallenges")
         template(v-if="resource === 'challenges'")
           section.detail-panel
             .section-heading
@@ -202,13 +208,14 @@ onBeforeUnmount(()=>controller?.abort());
             span {{ entity.participants.length }}{{ entity.capacity ? ` / ${entity.capacity}` : '' }}
           .participant-list
             .participant-row(v-for="part in entity.participants" :key="part.user.id")
-              UserAvatar.participant-person(:user="part.user")
+              .participant-person
+                UserAvatar(:user="part.user")
                 small(v-if="part.user.location.city") {{ part.user.location.city }}
               .participant-items(v-if="part.items?.length")
                 span(v-for="item in part.items" :key="item.id") {{ item.name }} × {{ item.quantity || 1 }}
             p.empty-inline(v-if="!entity.participants.length") Здесь пока никого. Присоединяйтесь первым.
       aside.detail-side
-        section.detail-panel.action-panel(v-if="['events','teams','challenges'].includes(resource)")
+        section.detail-panel.action-panel(v-if="['events','challenges'].includes(resource)")
           .info-row(v-if="entity.schedule")
             Icon(name="calendar")
             div
@@ -220,7 +227,7 @@ onBeforeUnmount(()=>controller?.abort());
             div
               small Где
               strong {{ [entity.location.city, entity.location.country].filter(value => value.trim()).join(', ') || 'Место не указано' }}
-          .info-row(v-if="entity.goal && resource !== 'teams'")
+          .info-row(v-if="entity.goal")
             Icon(name="bullseye")
             div
               small {{ resource === 'challenges' ? 'Цель на одного участника' : 'Цель' }}
@@ -233,7 +240,7 @@ onBeforeUnmount(()=>controller?.abort());
           .participation-notice(v-if="participant && resource !== 'challenges'")
             Icon(name="circle-check")
             | {{ participant.team ? `Вы участвуете за ${participant.team.title}` : 'Вы участвуете' }}
-          NButton(v-if="!participant && !ended" type="primary" block :loading="busy" @click="join") {{ resource === 'teams' ? 'Вступить в команду' : resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
+          NButton(v-if="!participant && !ended" type="primary" block :loading="busy" @click="join") {{ resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
           NButton(v-if="participant && resource === 'events' && !ended" type="primary" block @click="showItems = true")
             template(#icon)
               Icon(name="backpack")
@@ -243,18 +250,21 @@ onBeforeUnmount(()=>controller?.abort());
               Icon(name="plus")
             | Записать результат
           p.join-hint(v-if="participant && resource === 'challenges' && !ended && !started") Запись результатов откроется {{ dateLabel(entity.schedule?.start) }}.
-          p.closed-notice(v-if="ended") {{ resource === 'teams' ? 'Команда в архиве' : 'Участие завершено' }}
+          p.closed-notice(v-if="ended") Участие завершено
           NButton.leave-button(v-if="participant && resource !== 'teams' && !ended" :type="resource === 'challenges' ? 'error' : 'default'" :secondary="resource === 'challenges'" :quaternary="resource !== 'challenges'" block :loading="busy" @click="leave")
             template(v-if="resource === 'challenges'" #icon)
               Icon(name="right-from-bracket")
             | Отменить участие
-          p.join-hint(v-if="resource === 'teams' && !participant && !ended") Одновременно можно состоять только в одной активной команде.
         section.detail-panel.team-challenges(v-if="resource === 'teams'")
           h2 Пройденные челленджи
           article(v-for="challenge in entity.teamChallenges" :key="challenge.id")
             RouterLink(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
-            div Результат: {{ challenge.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
-            div(v-if="challenge.target != null") Цель команды: {{ challenge.target.toLocaleString('ru-RU') }} {{ challenge.unit }}
+            .challenge-metric
+              Icon(name="trophy")
+              span Результат: {{ challenge.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
+            .challenge-metric(v-if="challenge.target != null")
+              Icon(name="bullseye")
+              span Цель команды: {{ challenge.target.toLocaleString('ru-RU') }} {{ challenge.unit }}
           p.empty-inline(v-if="!entity.teamChallenges?.length") У команды пока нет завершённых челленджей.
         section.detail-panel.personal-score(v-if="resource === 'challenges' && participant")
           span МОЙ РЕЗУЛЬТАТ
@@ -289,6 +299,8 @@ onBeforeUnmount(()=>controller?.abort());
 </template>
 
 <style scoped>
+.challenge-metric{display:flex;align-items:baseline;gap:.45rem}.challenge-metric :deep(svg){color:#d39667}
+@media(max-width:45rem){.detail-columns--team>.detail-side{grid-row:auto}}
 .team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}
 .details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}
 .detail-panel .details-heading h2{margin:0}

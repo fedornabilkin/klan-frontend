@@ -25,7 +25,7 @@ NModal(:show="show" preset="card" title="Аналитика участника" 
     template(v-else-if="value")
       .member-heading
         UserAvatar(:user="value.member.user" size="lg")
-          small {{ [value.member.user.location.city, value.member.user.location.country].filter(Boolean).join(', ') || 'Место не указано' }}
+        small {{ [value.member.user.location.city, value.member.user.location.country].filter(Boolean).join(', ') || 'Место не указано' }}
       p.analytics-note Период: {{ value.range.from }} — {{ value.range.to }} включительно, UTC. Последнее записанное действие за всё доступное время: {{ dateTime(value.member.lastRecordedActivity) }}{{ value.member.lastRecordedActivity ? ' UTC' : '' }}.
       .member-metrics
         div
