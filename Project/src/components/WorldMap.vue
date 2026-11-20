@@ -10,8 +10,7 @@ import Icon from '@/components/ui/Icon.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import { userPath } from '@shared/user-links'
 
-export interface MapPoint { id: string; city: string; country: string; lat: number; lng: number; count: number; users: { id: string; publicId?: number; name: string; initials: string; color: string }[] }
-interface MapMarker { id: string; position: [number, number]; points: MapPoint[]; count: number; clustered: boolean }
+import { mapMarkers, type MapMarker, type MapPoint } from '@/domain/mapMarkers'
 const props = defineProps<{ points: MapPoint[]; loading?: boolean }>()
 const WIDTH = 880
 const HEIGHT = 420
@@ -35,58 +34,7 @@ const topology = worldData as unknown as Topology<{ countries: GeometryCollectio
 const countries = (feature(topology, topology.objects.countries) as FeatureCollection<Geometry>).features.filter(country => country.id !== '010')
 const grid = path(geoGraticule10()) || ''
 
-// Cluster in screen space. A spatial grid avoids comparing every city pair.
-const markers = computed<MapMarker[]>(() => {
-  const projected = props.points.flatMap(point => {
-    if (!point.city.trim() || typeof point.lat !== 'number' || !Number.isFinite(point.lat) || point.lat < -90 || point.lat > 90
-      || typeof point.lng !== 'number' || !Number.isFinite(point.lng) || point.lng < -180 || point.lng > 180) return []
-    const position = projection([point.lng, point.lat])
-    return position && position.every(Number.isFinite) ? [{ point, position }] : []
-  }).sort((a, b) => a.point.id.localeCompare(b.point.id))
-  const distance = 52 * remScale.value
-  const screenScale = scale.value * pixelsPerUnit.value
-  const cells = new Map<string, number[]>()
-  const parents = projected.map((_, index) => index)
-  const root = (index: number): number => {
-    while (parents[index] !== index) {
-      parents[index] = parents[parents[index]!]!
-      index = parents[index]!
-    }
-    return index
-  }
-  projected.forEach(({ position }, index) => {
-    const x = position[0] * screenScale
-    const y = position[1] * screenScale
-    const cellX = Math.floor(x / distance)
-    const cellY = Math.floor(y / distance)
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (const neighbor of cells.get(`${cellX + dx}:${cellY + dy}`) ?? []) {
-          const other = projected[neighbor]!.position
-          if (Math.hypot(x - other[0] * screenScale, y - other[1] * screenScale) < distance) parents[root(index)] = root(neighbor)
-        }
-      }
-    }
-    const key = `${cellX}:${cellY}`
-    const bucket = cells.get(key) ?? []
-    bucket.push(index)
-    cells.set(key, bucket)
-  })
-  const groups = new Map<number, typeof projected>()
-  projected.forEach((point, index) => {
-    const key = root(index)
-    const group = groups.get(key) ?? []
-    group.push(point)
-    groups.set(key, group)
-  })
-  return [...groups.values()].map(group => ({
-    id: group.length === 1 ? group[0]!.point.id : `cluster:${group.map(entry => entry.point.id).join(':')}`,
-    position: [group.reduce((sum, entry) => sum + entry.position[0], 0) / group.length, group.reduce((sum, entry) => sum + entry.position[1], 0) / group.length],
-    points: group.map(entry => entry.point),
-    count: group.reduce((sum, entry) => sum + entry.point.count, 0),
-    clustered: group.length > 1,
-  }))
-})
+const markers = computed(() => mapMarkers(props.points, projection, scale.value, pixelsPerUnit.value / remScale.value))
 
 let behavior: ZoomBehavior<SVGSVGElement, unknown> | undefined
 let resizeObserver: ResizeObserver | undefined
@@ -150,12 +98,13 @@ function activateMarker(marker: MapMarker) {
     g(:transform="transform")
       path.graticule(:d="grid")
       path.country(v-for="country in countries" :key="String(country.id)" :d="path(country) || ''")
-      g.map-marker(v-for="marker in markers" :key="marker.id" :transform="`translate(${marker.position[0]},${marker.position[1]}) scale(${markerScale})`" :data-kind="marker.clustered ? 'cluster' : 'city'" :data-cities="marker.points.length" tabindex="0" role="button" :aria-label="marker.clustered ? `${marker.count} участников в ${marker.points.length} городах. Приблизить.` : `${marker.points[0].city}: ${marker.count} участников`" :aria-pressed="!marker.clustered && activeId === marker.id" @click.stop="activateMarker(marker)" @keydown.enter.prevent.stop="activateMarker(marker)" @keydown.space.prevent.stop="activateMarker(marker)")
+      g.map-marker(v-for="marker in markers" :key="marker.id" :transform="`translate(${marker.position[0]},${marker.position[1]}) scale(${markerScale})`" :data-kind="marker.clustered ? 'cluster' : 'city'" :data-cities="marker.points.length" tabindex="0" role="button" :aria-label="marker.clustered ? `${marker.labels.join(', ')}. ${marker.count} участников в ${marker.points.length} городах. Приблизить.` : `${marker.points[0].city}: ${marker.count} участников`" :aria-pressed="!marker.clustered && activeId === marker.id" @click.stop="activateMarker(marker)" @keydown.enter.prevent.stop="activateMarker(marker)" @keydown.space.prevent.stop="activateMarker(marker)")
         circle.marker-hit(r="24")
         circle.marker-halo(:r="marker.clustered ? 23 : 21" :class="{ selected: activeId === marker.id }")
         circle.marker-body(:r="marker.clustered ? 19 : 16" :class="{ selected: activeId === marker.id, clustered: marker.clustered }")
         text.marker-count(font-size="13" text-anchor="middle" dominant-baseline="central") {{ marker.count }}
-        text.marker-label(v-if="!marker.clustered && (scale >= 2 || activeId === marker.id)" font-size="11" y="32" text-anchor="middle") {{ marker.points[0].city }}
+        text.marker-label(font-size="11" :y="marker.labelOffset[1]" text-anchor="middle")
+          tspan(v-for="(label,index) in marker.labels" :key="label" :x="marker.labelOffset[0]" :dy="index ? 13 : 0") {{ label }}
   .map-coordinate Обзорная карта
   .map-controls
     button(aria-label="Приблизить карту" title="Приблизить" :disabled="scale >= MAX_ZOOM" @click="changeZoom(1.5)")

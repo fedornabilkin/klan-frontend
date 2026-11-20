@@ -70,8 +70,15 @@ function participantLabel(count:number){
   return `${count} ${['участник','участника','участников'][form]}`;
 }
 async function act(action:()=>Promise<unknown>){if(busy.value)return;busy.value=true;actionError.value='';try{await action();await load();}catch(e){actionError.value=e instanceof Error?e.message:'Не удалось выполнить действие';}finally{busy.value=false;}}
-function join(){if(resource.value==='challenges'){showJoin.value=true;return;}void act(()=>api.post(`/${resource.value}/${id.value}/join`,{}));}
-function leave(){void act(()=>api.delete(`/${resource.value}/${id.value}/join`));}
+function changeParticipation(joining: boolean) {
+  const kind = resource.value, path = `/${kind}/${id.value}/join`;
+  void act(async () => {
+    if (joining) await api.post(path, {}); else await api.delete(path);
+    if (kind === 'teams') await auth.restore(true);
+  });
+}
+function join(){if(resource.value==='challenges'){showJoin.value=true;return;}changeParticipation(true);}
+function leave(){changeParticipation(false);}
 function toggleRead(){void act(()=>api.put(`/books/${id.value}/read`,{read:!hasRead.value}));}
 watch([resource,id],([kind,next],[previous])=>{if(kind===previous&&record.value?.publicId&&String(record.value.publicId)===next)return;
   for (const modal of [showEditor,showItems,showJoin,showResult,showReaders]) modal.value=false;

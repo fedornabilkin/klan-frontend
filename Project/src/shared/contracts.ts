@@ -40,6 +40,11 @@ export interface ListMeta { page: number; limit: number; total: number; pages: n
 export interface ListResponse<T> { data: T[]; meta: ListMeta }
 export interface ApiResponse<T> { data: T }
 export interface Dashboard {
+  teamRanking?: {
+    challenge: Pick<Entity, 'id' | 'publicId' | 'title'>;
+    unit: string;
+    leaders: (Pick<Entity, 'id' | 'publicId' | 'title'> & { score: number })[];
+  } | null;
   activityTotal?: number;
   stats: { users: number; cities: number; events: number; challenges: number; teams: number };
   events: Entity[]; challenges: Entity[]; teams: Entity[]; activity: Activity[];

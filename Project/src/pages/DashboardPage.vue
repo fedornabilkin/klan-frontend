@@ -10,7 +10,8 @@ import { useAuthStore } from '@/stores/auth'
 import Icon from '@/components/ui/Icon.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
-import WorldMap, { type MapPoint } from '@/components/WorldMap.vue'
+import WorldMap from '@/components/WorldMap.vue'
+import type { MapPoint } from '@/domain/mapMarkers'
 import CommunityTagFilter from '@/components/features/CommunityTagFilter.vue'
 import { useCommunityTags } from '@/composables/useCommunityTags'
 
@@ -43,6 +44,8 @@ const metrics = computed(() => [
 ])
 const month = new Intl.DateTimeFormat('ru', {month:'long', year:'numeric'}).format(new Date()).replace(' г.','')
 const nextEvent = computed(() => dashboard.value?.events[0])
+const ownTeam = computed(() => auth.user?.activeTeams[0])
+const ranking = computed(() => dashboard.value?.teamRanking)
 function date(value?: string) { if (!value) return ''; const d = new Date(value); return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('ru', {day:'numeric',month:'short'}).format(d) }
 function time(value: string) { return new Intl.DateTimeFormat('ru', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value)) }
 function progress(start?: string, end?: string) { if (!start || !end) return 0; return Math.max(0, Math.min(100, ((Date.now() - Date.parse(start)) / (Date.parse(end) - Date.parse(start))) * 100)) }
@@ -105,13 +108,6 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
       h1 Сильнее, когда 
         span вместе.
       p.lead Находи своих. Принимай вызовы. Делай то, что имеет значение.
-    .intro-actions
-      RouterLink.button.ghost(v-if="auth.user" :to="userPath(auth.user)")
-        Icon(name="user")
-        span Мой профиль
-      RouterLink.button.primary(to="/events")
-        Icon(name="arrow-up-right-from-square")
-        span Найти событие
   p.inline-error(v-if="dashboardError") {{ dashboardError }}
     button.button.small(@click="loadDashboard") Повторить
   .metric-grid
@@ -131,12 +127,13 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
             p Точка на карте — начало настоящего знакомства.
           span.map-badge НА СВЯЗИ
         .map-tools
-          .map-search
-            Icon(name="magnifying-glass")
-            input(v-model="q" placeholder="Имя, город или интересы участника…" aria-label="Поиск участников на карте")
-            button.icon-button(v-if="q" aria-label="Очистить поиск" @click="q = ''")
-              Icon(name="xmark")
           CommunityTagFilter.map-tag-filter(v-model="selectedTags" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
+            template(#search)
+              .map-search
+                Icon(name="magnifying-glass")
+                input(v-model="q" placeholder="Найти участника" aria-label="Поиск участников на карте по имени, городу или интересам")
+                button.icon-button(v-if="q" aria-label="Очистить поиск" @click="q = ''")
+                  Icon(name="xmark")
         p.inline-error(v-if="geographyError") {{ geographyError }}
           button.button.small(@click="loadMap") Повторить
         ErrorBoundary
@@ -172,17 +169,31 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
         .panel-heading
           div
             h2 Своя команда — твоя опора
-            p Выбери людей, с которыми идёшь дальше.
           RouterLink.text-link(to="/teams") Все команды
             Icon(name="arrow-right")
-        .team-mini-grid
-          RouterLink.team-mini(v-for="(team,index) in dashboard?.teams.slice(0,4)" :key="team.id" :to="'/teams/' + (team.publicId ?? team.id)")
-            .team-emblem
-              Icon(:name="index % 2 ? 'fire' : 'mountain-sun'")
+        .dashboard-teams
+          RouterLink.own-team(v-if="ownTeam" :to="'/teams/' + (ownTeam.publicId ?? ownTeam.id)")
+            .own-team-emblem
+              Icon(name="shield-halved")
             div
-              h3 {{ team.title }}
-              p {{ team.participantCount ?? team.participants.length }} участников · Активна
+              span Моя команда
+              h3 {{ ownTeam.title }}
+              p Участников: {{ ownTeam.memberCount }}
             Icon(name="chevron-right")
+          template(v-if="ranking?.leaders.length")
+            .ranking-heading
+              h3 Командный зачёт
+              RouterLink.text-link(:to="'/challenges/' + (ranking.challenge.publicId ?? ranking.challenge.id)") {{ ranking.challenge.title }}
+                Icon(name="arrow-right")
+            ol.team-leaders(aria-label="Лидеры командного зачёта")
+              li(v-for="(team,index) in ranking.leaders" :key="team.id")
+                RouterLink.leader-card(:class="{mine: team.id === ownTeam?.id}" :to="'/teams/' + (team.publicId ?? team.id)")
+                  span.leader-place(:aria-label="(index + 1) + ' место'") {{ index + 1 }}
+                  .leader-copy
+                    span.leader-own(v-if="team.id === ownTeam?.id") Моя команда
+                    strong {{ team.title }}
+                    span.leader-score {{ team.score.toLocaleString('ru-RU') }} {{ ranking.unit }}
+          p.empty-message(v-else-if="dashboard") Командного зачёта пока нет.
     .dashboard-aside
       section.panel
         .panel-heading
@@ -233,6 +244,26 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
 </template>
 
 <style scoped>
-.map-tag-filter{margin:.85rem 0 1rem}
+.map-panel .panel-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.map-panel .map-badge{justify-self:end;align-self:start}
+.map-tag-filter{margin:0 0 1rem}
+.map-search,.map-search input{min-width:0}
+.dashboard-teams{padding:0 1.2rem 1.2rem;display:grid;gap:.85rem}
+.own-team,.leader-card{border:1px solid var(--border);border-radius:.55rem;min-width:0;overflow-wrap:anywhere}
+.own-team{display:flex;align-items:center;gap:.8rem;padding:1rem;background:var(--surface-raised);border-color:#695644}
+.own-team-emblem{display:grid;place-items:center;flex:none;width:2.8rem;height:2.8rem;border-radius:.55rem;background:#382b21;color:var(--accent)}
+.own-team>svg{margin-left:auto;color:var(--muted);flex:none}
+.own-team span,.leader-own{font-size:.68rem;color:var(--accent)}
+.own-team h3{font-size:1rem}.own-team p,.leader-score{font-size:.75rem;color:var(--muted)}
+.ranking-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:.35rem .8rem}
+.ranking-heading h3{font-size:.9rem}
+.team-leaders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;list-style:none;margin:0;padding:0}
+.leader-card{display:flex;align-items:flex-start;gap:.55rem;height:100%;padding:clamp(.5rem,1vw,.85rem)}
+.leader-card.mine{border-color:#695644}
+.leader-card:hover,.own-team:hover{border-color:var(--accent)}
+.leader-copy{display:grid;gap:.2rem;min-width:0;font-size:.85rem}
+.leader-place{font-size:.85rem;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.team-leaders li:first-child .leader-place{color:var(--accent)}
+.dashboard-teams .empty-message{margin:0;padding:0}
 .aside-note{padding:1.3rem .8rem;color:#7d886e}.aside-note>svg{color:#695238;font-size:1.3rem}.aside-note p{font-family:'Oswald',sans-serif;color:#b8bda9;font-size:1.25rem;margin:.6rem 0 .4rem}.aside-note span{font-size:.67rem;line-height:1.8}.challenge-preview>svg{font-size:.7rem}.inline-error .button{margin-left:.8rem}
 </style>
