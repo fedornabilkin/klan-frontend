@@ -11,7 +11,8 @@ import { useAuthStore } from '@/stores/auth';
 import { useRealtime } from '@/composables/useRealtime';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
-import StatusBadge from '@/components/ui/StatusBadge.vue';
+import EntityTitle from '@/components/ui/EntityTitle.vue';
+import ChallengeMetric from '@/components/ui/ChallengeMetric.vue';
 import ProfileTextEditor from '@/components/features/ProfileTextEditor.vue';
 import ProfileIdentityEditor from '@/components/features/ProfileIdentityEditor.vue';
 import ProfileLocationEditor from '@/components/features/ProfileLocationEditor.vue';
@@ -113,7 +114,7 @@ onBeforeUnmount(()=>controller?.abort());
       .profile-title
         .profile-eyebrow
           span.admin-mark(v-if="user.role === 'admin'") АДМИН
-          RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" title="Ссылка на профиль") ID {{ user.publicId }}
+          RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" data-tooltip="Ссылка на профиль") ID {{ user.publicId }}
         ProfileIdentityEditor(:key="`identity-${user.id}`" :user="user" :editable="isOwn" @saved="profileIdentitySaved")
         ProfileLocationEditor(:key="`location-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'location')")
     .detail-columns.detail-columns--profile
@@ -159,12 +160,10 @@ onBeforeUnmount(()=>controller?.abort());
       Icon(:name="resourceMeta[resource].icon")
       .cover-meta
         span {{ categoryLabels[entity.category] || entity.category || resourceMeta[resource].singular }}
-        StatusBadge(:status="entity.status")
     .entity-heading
       .entity-title
         .profile-eyebrow {{ resourceMeta[resource].singular.toUpperCase() }} / KLAN
-        h1 {{ entity.title }}
-        StatusBadge(v-if="['teams','challenges'].includes(resource)" :status="entity.status")
+        EntityTitle(:title="entity.title" :status="entity.status === 'active' && ended ? 'completed' : entity.status")
         p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
       NButton(v-if="canEdit" secondary @click="showEditor = true")
         template(#icon)
@@ -180,7 +179,7 @@ onBeforeUnmount(()=>controller?.abort());
               Icon(name="circle-check")
               | Вы участвуете
             NButton(v-else-if="resource === 'teams' && !ended" type="primary" size="small" :loading="busy" @click="join") Вступить в команду
-            span.challenge-participation(v-else-if="resource === 'challenges' && participant" :title="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
+            span.challenge-participation(v-else-if="resource === 'challenges' && participant" tabindex="0" :data-tooltip="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
               Icon(name="circle-check")
               | Участвую
           p.prose {{ entity.description }}
@@ -259,12 +258,9 @@ onBeforeUnmount(()=>controller?.abort());
           h2 Пройденные челленджи
           article(v-for="challenge in entity.teamChallenges" :key="challenge.id")
             RouterLink(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
-            .challenge-metric
-              Icon(name="trophy")
-              span Результат: {{ challenge.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
-            .challenge-metric(v-if="challenge.target != null")
-              Icon(name="bullseye")
-              span Цель команды: {{ challenge.target.toLocaleString('ru-RU') }} {{ challenge.unit }}
+            .finished-metrics
+              ChallengeMetric(icon="trophy" label="Результат команды" :value="challenge.score" :unit="challenge.unit")
+              ChallengeMetric(v-if="challenge.target != null" icon="bullseye" label="Цель команды" :value="challenge.target" :unit="challenge.unit")
           p.empty-inline(v-if="!entity.teamChallenges?.length") У команды пока нет завершённых челленджей.
         section.detail-panel.personal-score(v-if="resource === 'challenges' && participant")
           span МОЙ РЕЗУЛЬТАТ
@@ -299,7 +295,7 @@ onBeforeUnmount(()=>controller?.abort());
 </template>
 
 <style scoped>
-.challenge-metric{display:flex;align-items:baseline;gap:.45rem}.challenge-metric :deep(svg){color:#d39667}
+.finished-metrics{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .85rem}
 @media(max-width:45rem){.detail-columns--team>.detail-side{grid-row:auto}}
 .team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}
 .details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}

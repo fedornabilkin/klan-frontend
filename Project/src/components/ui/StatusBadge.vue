@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { statusLabel } from '@/domain/entityStatus';
 const props = defineProps<{ status: string }>();
-const labels: Record<string, string> = { active: 'Активно', archive: 'Архив', archived: 'Архив', completed: 'Завершено', upcoming: 'Скоро', planned: 'Скоро', published: 'Опубликовано', open: 'Открыто', new: 'Новое', review: 'На рассмотрении', 'in-progress': 'В работе', in_progress: 'В работе', approved: 'Принято', resolved: 'Решено', rejected: 'Отклонено', closed: 'Закрыто', draft: 'Черновик', offline: 'Офлайн', online: 'Онлайн' };
-const label = computed(() => labels[props.status] || props.status);
+const label = computed(() => statusLabel(props.status));
 </script>
 
 <template lang="pug">

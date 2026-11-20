@@ -1,6 +1,23 @@
+import { ref, shallowReactive } from 'vue';
 import type { Activity } from '@shared/contracts';
 export type RealtimeMessage = { type: 'invalidate'; resource: string } | { type: 'activity'; data: Activity };
 type Listener = (message: RealtimeMessage) => void;
+const online = shallowReactive(new Set<string>());
+const presenceKnown = ref(false);
+
+export function userPresence(id: string): 'online' | 'offline' | 'unknown' {
+  return presenceKnown.value ? (online.has(id) ? 'online' : 'offline') : 'unknown';
+}
+
+function clearPresence() {
+  presenceKnown.value = false;
+  online.clear();
+}
+
+function isUserList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(id => typeof id === 'string');
+}
+
 const listeners = new Set<Listener>();
 let socket: WebSocket | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -48,7 +65,16 @@ function connect(): void {
     try {
       const message: unknown = JSON.parse(String(event.data));
       if (!message || typeof message !== 'object' || !('type' in message)) return;
-      if (message.type === 'invalidate' && 'resource' in message && typeof message.resource === 'string') {
+      if (message.type === 'presence') {
+        if ('online' in message && isUserList(message.online)) {
+          online.clear();
+          for (const id of message.online) online.add(id);
+          presenceKnown.value = true;
+        } else if (presenceKnown.value && 'joined' in message && 'left' in message && isUserList(message.joined) && isUserList(message.left)) {
+          for (const id of message.joined) online.add(id);
+          for (const id of message.left) online.delete(id);
+        }
+      } else if (message.type === 'invalidate' && 'resource' in message && typeof message.resource === 'string') {
         invalidate(message.resource);
       } else if (message.type === 'activity' && 'data' in message) {
         publish(message as RealtimeMessage);
@@ -58,6 +84,7 @@ function connect(): void {
   connection.onclose = event => {
     if (socket !== connection) return;
     socket = undefined;
+    clearPresence();
     if (!enabled) return;
     if (event.code === 4001 && event.reason === 'Session expired') {
       window.dispatchEvent(new Event('klan:unauthorized'));
@@ -75,6 +102,7 @@ export function startRealtime(): void {
 }
 export function stopRealtime(): void {
   enabled = false;
+  clearPresence();
   document.removeEventListener('visibilitychange', scheduleRefresh);
   clearTimeout(refreshTimer);
   refreshTimer = undefined;

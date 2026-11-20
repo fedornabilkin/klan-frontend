@@ -93,12 +93,12 @@ async function logout() {
         span.private-badge
           Icon(name="lock")
           span Закрытое сообщество
-        RouterLink.icon-button.header-rules(to="/rules" title="Правила сообщества" aria-label="Правила сообщества")
+        RouterLink.icon-button.header-rules(to="/rules" data-tooltip="Правила сообщества" aria-label="Правила сообщества")
           Icon(name="circle-question")
         .topbar-account(v-if="auth.user" aria-label="Мой аккаунт")
           UserAvatar.account-profile(:user="auth.user" :aria-label="`Мой профиль: ${auth.user.name}`" @click="menuOpen = false")
             small.account-role {{ accountRole }}
-          button.icon-button.account-logout(:disabled="loggingOut" :aria-busy="loggingOut" :title="loggingOut ? 'Выходим…' : 'Выйти'" :aria-label="loggingOut ? 'Выходим из аккаунта' : 'Выйти из аккаунта'" @click="logout")
+          button.icon-button.account-logout(:disabled="loggingOut" :aria-busy="loggingOut" :data-tooltip="loggingOut ? 'Выходим…' : 'Выйти'" :aria-label="loggingOut ? 'Выходим из аккаунта' : 'Выйти из аккаунта'" @click="logout")
             Icon(name="right-from-bracket")
     p.account-error(v-if="logoutError" role="alert") {{ logoutError }}
     main.main-content

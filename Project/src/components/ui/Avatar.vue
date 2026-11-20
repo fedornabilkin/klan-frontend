@@ -8,7 +8,7 @@ const initials = computed(() => props.user?.initials || props.user?.name?.split(
 </script>
 
 <template lang="pug">
-span.avatar(:class="`avatar--${size}`" :style="{ '--avatar-color': user?.color || '#b57439' }" :title="user?.name" aria-hidden="true") {{ initials }}
+span.avatar(:class="`avatar--${size}`" :style="{ '--avatar-color': user?.color || '#b57439' }" :data-tooltip="user?.name" aria-hidden="true") {{ initials }}
 </template>
 
 <style scoped>

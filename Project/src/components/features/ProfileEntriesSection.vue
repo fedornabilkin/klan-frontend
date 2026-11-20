@@ -169,8 +169,8 @@ async function remove() {
             <time v-if="entry.date" :datetime="entry.date">{{ dateLabel(entry.date) }}</time>
           </div>
           <div v-if="editable && deleteId !== entry.id" class="entry-actions">
-            <NButton size="small" quaternary circle :disabled="busy || !!mode" :aria-label="`Изменить ${entryLabel} ${index + 1}`" title="Изменить" @click="start(entry)"><template #icon><Icon name="pen" /></template></NButton>
-            <NButton size="small" quaternary circle :disabled="busy || !!mode" :aria-label="`Удалить ${entryLabel} ${index + 1}`" title="Удалить" @click="askDelete(entry.id)"><template #icon><Icon name="trash" /></template></NButton>
+            <NButton size="small" quaternary circle :disabled="busy || !!mode" :aria-label="`Изменить ${entryLabel} ${index + 1}`" data-tooltip="Изменить" @click="start(entry)"><template #icon><Icon name="pen" /></template></NButton>
+            <NButton size="small" quaternary circle :disabled="busy || !!mode" :aria-label="`Удалить ${entryLabel} ${index + 1}`" data-tooltip="Удалить" @click="askDelete(entry.id)"><template #icon><Icon name="trash" /></template></NButton>
           </div>
           <div v-if="deleteId === entry.id" class="entry-delete" role="group" :aria-label="`Подтверждение удаления: ${entryLabel} ${index + 1}`">
             <p>Удалить {{ entryLabel }}?</p>

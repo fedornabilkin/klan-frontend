@@ -110,7 +110,7 @@ useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].incl
             p События пользователей по дням
           Icon(name="chart-line")
         .activity-chart(v-if="stats.activity.length" role="img" aria-label="Количество событий по дням")
-          .activity-column(v-for="point in stats.activity" :key="point.date" :title="`${dateLabel(point.date)}: ${point.count}`")
+          .activity-column(v-for="point in stats.activity" :key="point.date" tabindex="0" :data-tooltip="`${dateLabel(point.date)}: ${point.count}`")
             span.activity-value {{ point.count }}
             .activity-bar-space
               .activity-bar(:style="{ height: `${Math.max(point.count ? 3 : 0, point.count / maximum(stats.activity) * 100)}%` }")

@@ -29,7 +29,7 @@ function toggle(id: string) {
       <CommunityTagSelect v-model="selected" :tags="tags" :loading="loading" />
     </div>
     <div class="popular-tags" role="group" aria-label="Фильтры по тегам">
-      <button v-for="tag in popular" :key="tag.id" type="button" class="popular-tag" :class="{ selected: selected.includes(tag.id) }" :aria-pressed="selected.includes(tag.id)" :title="`${tag.name}: ${tag.count} участников`" @click="toggle(tag.id)">
+      <button v-for="tag in popular" :key="tag.id" type="button" class="popular-tag" :class="{ selected: selected.includes(tag.id) }" :aria-pressed="selected.includes(tag.id)" :data-tooltip="`${tag.name}: ${tag.count} участников`" @click="toggle(tag.id)">
         <span>{{ tag.name }}</span><span class="tag-count">{{ tag.count }}</span>
       </button>
       <button v-if="selected.length" type="button" class="clear-tags" @click="selected = []">Сбросить теги</button>

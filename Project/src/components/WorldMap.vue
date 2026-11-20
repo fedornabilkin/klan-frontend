@@ -106,11 +106,11 @@ function activateMarker(marker: MapMarker) {
           tspan(v-for="(label,index) in marker.labels" :key="label" :x="marker.labelOffset[0]" :dy="index ? 13 : 0") {{ label }}
   .map-coordinate Обзорная карта
   .map-controls
-    button(aria-label="Приблизить карту" title="Приблизить" :disabled="scale >= MAX_ZOOM" @click="changeZoom(1.5)")
+    button(aria-label="Приблизить карту" data-tooltip="Приблизить" :disabled="scale >= MAX_ZOOM" @click="changeZoom(1.5)")
       Icon(name="plus")
-    button(aria-label="Отдалить карту" title="Отдалить" :disabled="scale <= 1" @click="changeZoom(1 / 1.5)")
+    button(aria-label="Отдалить карту" data-tooltip="Отдалить" :disabled="scale <= 1" @click="changeZoom(1 / 1.5)")
       Icon(name="minus")
-    button(aria-label="Вернуться к центральной России" title="Центральная Россия" @click="resetZoom")
+    button(aria-label="Вернуться к центральной России" data-tooltip="Центральная Россия" @click="resetZoom")
       Icon(name="expand")
   .map-popup(v-if="active")
     .popup-heading

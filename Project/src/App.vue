@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NConfigProvider, NDialogProvider, NMessageProvider, darkTheme, ruRU, dateRuRU } from 'naive-ui';
+import AppTooltip from '@/components/ui/AppTooltip.vue';
 import type { GlobalThemeOverrides } from 'naive-ui';
 
 const theme: GlobalThemeOverrides = {
@@ -21,4 +22,5 @@ n-config-provider(:theme="darkTheme" :theme-overrides="theme" :locale="ruRU" :da
   n-dialog-provider
     n-message-provider
       router-view
+      AppTooltip
 </template>

@@ -109,7 +109,7 @@ const activityOptions = [
               h3 Динамика действий
               p По дням выбранного периода
           .daily-chart(v-if="community.daily.some(day => day.actions > 0)" role="img" aria-label="Зарегистрированные действия по дням; значения и даты подписаны на столбцах")
-            .daily-column(v-for="day in community.daily" :key="day.date" :title="`${day.date}: ${day.actions} действий, ${day.activeMembers} участников с действиями, ${day.newMembers} новых участников`")
+            .daily-column(v-for="day in community.daily" :key="day.date" tabindex="0" :data-tooltip="`${day.date}: ${day.actions} действий, ${day.activeMembers} участников с действиями, ${day.newMembers} новых участников`")
               span {{ day.actions }}
               .daily-space
                 i(:style="{height:`${day.actions / maximumDay * 100}%`}")

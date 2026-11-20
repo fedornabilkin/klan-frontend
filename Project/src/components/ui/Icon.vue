@@ -36,7 +36,7 @@ const style = computed(() => props.size ? { fontSize: typeof props.size === 'num
 </script>
 
 <template lang="pug">
-font-awesome-icon.ui-icon(:icon="icon" :style="style" :title="title" :aria-hidden="title ? undefined : true")
+font-awesome-icon.ui-icon(:icon="icon" :style="style" :data-tooltip="title" :aria-label="title" :aria-hidden="title ? undefined : true")
 </template>
 
 <style scoped>

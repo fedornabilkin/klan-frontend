@@ -71,13 +71,13 @@ async function save() {
           </div>
           <div v-if="manage" class="roster-tools">
             <NButton v-for="button in rolesFor(part)" :key="button.icon" circle size="small" secondary
-              :type="button.active ? 'primary' : 'default'" :aria-pressed="button.active" :title="button.label"
+              :type="button.active ? 'primary' : 'default'" :aria-pressed="button.active" :data-tooltip="button.label"
               :aria-label="button.label + ' — ' + displayProfileName(part.user)"
               :disabled="busy" @click="confirm(part, button.action, button.label)">
               <template #icon><Icon :name="button.icon" /></template>
             </NButton>
             <NButton v-if="team.status !== 'archived'" circle size="small" type="error" quaternary :disabled="busy"
-              title="Исключить из команды" :aria-label="'Исключить из команды — ' + displayProfileName(part.user)"
+              data-tooltip="Исключить из команды" :aria-label="'Исключить из команды — ' + displayProfileName(part.user)"
               @click="confirm(part, 'exclude', 'Исключить из команды')"><template #icon><Icon name="xmark" /></template></NButton>
           </div>
         </div>

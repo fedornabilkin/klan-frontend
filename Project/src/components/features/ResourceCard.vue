@@ -29,7 +29,7 @@ RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resour
     p.card-description(v-if="user.bio.trim()") {{ user.bio }}
     .card-tags
       span(v-for="tag in memberTags.slice(0, 3)" :key="tag.id") {{ tag.name }}
-      span.more-tags(v-if="remainingTags.length" :title="remainingTags.map(tag => tag.name).join(', ')" :aria-label="`Ещё ${remainingTags.length} тегов: ${remainingTags.map(tag => tag.name).join(', ')}`") +{{ remainingTags.length }}
+      span.more-tags(v-if="remainingTags.length" tabindex="0" data-tooltip-detail :data-tooltip="remainingTags.map(tag => tag.name).join(', ')" :aria-label="`Ещё ${remainingTags.length} тегов: ${remainingTags.map(tag => tag.name).join(', ')}`") +{{ remainingTags.length }}
     .person-bottom
       span {{ user.stats.events }} мероприятий
       span.member-tag-count Тегов: {{ memberTags.length }}
