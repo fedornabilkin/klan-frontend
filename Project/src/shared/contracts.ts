@@ -26,7 +26,8 @@ export interface TeamChallengeSummary {
   members?: number; personalTarget?: number | null;
   id: string; publicId?: number; title: string; score: number; target: number | null; unit: string;
 }
-export interface Participation { user: User; teamRole?: TeamRole; team?: { id: string; publicId?: number; title: string }; items?: Item[]; target?: number }
+export type EventOrganizer = { userId: string } | { name: string };
+export interface Participation { user: User; teamRole?: TeamRole; team?: { id: string; publicId?: number; title: string }; items?: Item[]; comment?: string; target?: number }
 export interface ChallengeResult { user: User; date: string; value: number; team?: { id: string; publicId?: number; title: string } }
 /** Imported values without a confirmed date are excluded from all result totals. */
 export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
@@ -42,7 +43,7 @@ export interface Entity {
   /** Visible team directory included with compact challenge details. */
   challengeTeams?: NonNullable<Participation['team']>[];
   pendingResults?: ChallengePendingResult[];
-  readers?: User[]; capacity?: number;
+  readers?: User[]; capacity?: number | null; organizer?: EventOrganizer | null; organizerUser?: User;
 }
 export type UserIdentity = Pick<User, 'id' | 'publicId' | 'name' | 'firstName' | 'lastName' | 'callsign' | 'initials' | 'color' | 'hasActiveTeam'>;
 export interface Activity { id: string; actor: UserIdentity & Pick<User, 'role'>; action: string; target?: { title: string; path: string; user?: UserIdentity }; createdAt: string }

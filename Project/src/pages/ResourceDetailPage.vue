@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NButton, NSkeleton } from 'naive-ui';
-import type { Entity, Resource, User } from '@shared/contracts';
+import type { ApiResponse, Entity, Resource, User } from '@shared/contracts';
 import { userPath } from '@shared/user-links';
 import type { IdentitySavedField } from '@/domain/profile-identity';
+import { EntityBuilder } from '@/domain/builders';
 import { communityService } from '@/services/community';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
@@ -40,6 +41,7 @@ const participant=computed(()=>resource.value==='users'?undefined:entity.value?.
 const canEdit=computed(()=>auth.can('content.manage')||(resource.value==='feedback'&&entity.value?.author?.id===auth.user?.id));
 const hasRead=computed(()=>entity.value?.readers?.some(u=>u.id===auth.user?.id)||false);
 const ended=computed(()=>entity.value?.status==='archived'||entity.value?.status==='completed'||(entity.value?.schedule?new Date(entity.value.schedule.end).getTime()<Date.now():false));
+const eventFull = computed(() => resource.value === 'events' && entity.value?.capacity != null && entity.value.participants.length >= entity.value.capacity);
 const started=computed(()=>!entity.value?.schedule || entity.value.schedule.start.slice(0,10)<=new Date().toISOString().slice(0,10));
 const standings=computed(()=>challengeStandings(entity.value));
 const ownTotal=computed(()=>standings.value.people.find(row=>row.user.id===auth.user?.id)?.score ?? 0);
@@ -75,8 +77,16 @@ function participantLabel(count:number){
 async function act(action:()=>Promise<unknown>){if(busy.value)return;busy.value=true;actionError.value='';try{await action();await load();}catch(e){actionError.value=e instanceof Error?e.message:'Не удалось выполнить действие';}finally{busy.value=false;}}
 function changeParticipation(joining: boolean) {
   const kind = resource.value, path = `/${kind}/${id.value}/join`;
+  const eventId = record.value?.id;
   void act(async () => {
-    if (joining) await api.post(path, {}); else await api.delete(path);
+    if (joining && kind === 'events') {
+      const { data } = await api.post<ApiResponse<Entity>>(path, {});
+      if (resource.value === kind && record.value?.id === eventId) {
+        record.value = new EntityBuilder().from(data).build();
+        showItems.value = true;
+      }
+    } else if (joining) await api.post(path, {});
+    else await api.delete(path);
     if (kind === 'teams') await auth.restore(true);
   });
 }
@@ -110,14 +120,14 @@ onBeforeUnmount(()=>controller?.abort());
     p {{ error }}
     NButton(@click="load") Повторить
   template(v-else-if="record && resource === 'users'")
-    .profile-heading
+    header.detail-heading
       .profile-title
         .profile-eyebrow
           span.admin-mark(v-if="user.role === 'admin'") АДМИН
           RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" data-tooltip="Ссылка на профиль") ID {{ user.publicId }}
         ProfileIdentityEditor(:key="`identity-${user.id}`" :user="user" :editable="isOwn" @saved="profileIdentitySaved")
         ProfileLocationEditor(:key="`location-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'location')")
-    .detail-columns.detail-columns--profile
+    .detail-columns
       .detail-main
         section.detail-panel
           ProfileTextEditor(:key="`bio-${user.id}`" :user="user" field="bio" :editable="isOwn" @saved="profileSaved($event, 'bio')")
@@ -155,14 +165,9 @@ onBeforeUnmount(()=>controller?.abort());
           p Сохраните профиль или перенесите информацию из JSON.
           RouterLink(to="/profile/import") Импорт и экспорт
   template(v-else-if="record")
-    .entity-cover(v-if="!['teams','challenges'].includes(resource)" :class="`entity-cover--${resource}`")
-      .cover-grid
-      Icon(:name="resourceMeta[resource].icon")
-      .cover-meta
-        span {{ categoryLabels[entity.category] || entity.category || resourceMeta[resource].singular }}
-    .entity-heading
+    header.detail-heading
       .entity-title
-        .profile-eyebrow {{ resourceMeta[resource].singular.toUpperCase() }} / KLAN
+        .profile-eyebrow {{ [resourceMeta[resource].singular, categoryLabels[entity.category] || entity.category].filter(Boolean).join(' · ') }}
         EntityTitle(:title="entity.title" :status="entity.status === 'active' && ended ? 'completed' : entity.status")
         p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
       NButton(v-if="canEdit" secondary @click="showEditor = true")
@@ -170,12 +175,12 @@ onBeforeUnmount(()=>controller?.abort());
           Icon(name="pen")
         | Редактировать
     .action-error(v-if="actionError" role="alert") {{ actionError }}
-    .detail-columns(:class="{ 'detail-columns--team': resource === 'teams' }")
+    .detail-columns
       .detail-main
         section.detail-panel
           .details-heading
             h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
-            span.challenge-participation(v-if="resource === 'teams' && participant")
+            span.challenge-participation(v-if="['teams', 'events'].includes(resource) && participant")
               Icon(name="circle-check")
               | Вы участвуете
             NButton(v-else-if="resource === 'teams' && !ended" type="primary" size="small" :loading="busy" @click="join") Вступить в команду
@@ -210,6 +215,7 @@ onBeforeUnmount(()=>controller?.abort());
               .participant-person
                 UserAvatar(:user="part.user")
                 small(v-if="part.user.location.city") {{ part.user.location.city }}
+              p.attendance-comment(v-if="part.comment") {{ part.comment }}
               .participant-items(v-if="part.items?.length")
                 span(v-for="item in part.items" :key="item.id") {{ item.name }} × {{ item.quantity || 1 }}
             p.empty-inline(v-if="!entity.participants.length") Здесь пока никого. Присоединяйтесь первым.
@@ -234,16 +240,20 @@ onBeforeUnmount(()=>controller?.abort());
           .info-row
             Icon(name="users")
             div
-              small Вместе с вами
-              strong {{ entity.participants.length }} участников
-          .participation-notice(v-if="participant && resource !== 'challenges'")
-            Icon(name="circle-check")
-            | {{ participant.team ? `Вы участвуете за ${participant.team.title}` : 'Вы участвуете' }}
-          NButton(v-if="!participant && !ended" type="primary" block :loading="busy" @click="join") {{ resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
+              small {{ resource === 'events' ? 'Запись на мероприятие' : 'Участники' }}
+              strong {{ participantLabel(entity.participants.length) }}
+              span(v-if="resource === 'events'") {{ entity.capacity == null ? 'Без ограничения мест' : 'Всего мест: ' + entity.capacity }}
+          .info-row(v-if="resource === 'events'")
+            Icon(name="user")
+            div
+              small Организатор
+              UserAvatar(v-if="entity.organizerUser" :user="entity.organizerUser")
+              strong(v-else) {{ entity.organizer && 'name' in entity.organizer ? entity.organizer.name : 'Не указан' }}
+          NButton(v-if="!participant && !ended" type="primary" block :disabled="eventFull" :loading="busy" @click="join") {{ eventFull ? 'Свободных мест нет' : resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
           NButton(v-if="participant && resource === 'events' && !ended" type="primary" block @click="showItems = true")
             template(#icon)
               Icon(name="backpack")
-            | Возьму с собой
+            | Вещи и комментарий
           NButton(v-if="participant && resource === 'challenges' && !ended && started" type="primary" block @click="showResult = true")
             template(#icon)
               Icon(name="plus")
@@ -280,7 +290,7 @@ onBeforeUnmount(()=>controller?.abort());
               Icon(:name="hasRead ? 'check' : 'plus'")
             | {{ hasRead ? 'Прочитано · убрать отметку' : 'Я прочитал эту книгу' }}
         section.detail-panel(v-if="entity.author")
-          h2 {{ resource === 'feedback' ? 'Автор предложения' : 'Организатор / автор' }}
+          h2 {{ resource === 'feedback' ? 'Автор предложения' : resource === 'events' ? 'Создал мероприятие' : 'Автор' }}
           UserAvatar.author-link(:user="entity.author")
             small(v-if="entity.author.role === 'admin'") Администратор
         section.detail-panel.detail-note
@@ -296,7 +306,7 @@ onBeforeUnmount(()=>controller?.abort());
 
 <style scoped>
 .finished-metrics{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .85rem}
-@media(max-width:45rem){.detail-columns--team>.detail-side{grid-row:auto}}
+
 .team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}
 .details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}
 .detail-panel .details-heading h2{margin:0}
@@ -304,7 +314,8 @@ onBeforeUnmount(()=>controller?.abort());
 
 .profile-team-list{display:flex;flex-direction:column;gap:1rem}.profile-team-card+.profile-team-card{border-top:1px solid #ffffff0a;padding-top:1rem}.profile-team-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap}.profile-team-heading>a{color:#e7b78f;text-decoration:none;font-weight:600;font-size:.95rem;overflow-wrap:anywhere}.profile-team-heading>a:hover{color:#ffd0ab;text-decoration:underline}.profile-team-heading>a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem;border-radius:.2rem}.profile-team-heading>span{font-size:.72rem;color:#aa998b;white-space:nowrap}.profile-team-card>p{font-size:.82rem;color:#b4aca6;line-height:1.8;margin:.6rem 0 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}.profile-teams .profile-team-empty{color:#93877e;font-size:.8rem;line-height:1.7;margin:0}.profile-team-card>.profile-team-empty{margin-top:.5rem}
 .detail-refresh-error{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #755d33;background:#2b251b;border-radius:.6rem;padding:.8rem;margin-bottom:1rem;color:#dcc391;font-size:.78rem}.detail-refresh-error>span{min-width:0;overflow-wrap:anywhere}
-.profile-title{min-width:0}.profile-eyebrow{flex-wrap:wrap}.profile-id{font-variant-numeric:tabular-nums;color:#9f948c;white-space:nowrap}@media(max-width:45rem){.detail-columns--profile>.detail-side{grid-row:auto}}
-.detail-page{max-width:78rem;margin:0 auto}.detail-back{display:inline-flex;align-items:center;gap:.6rem;color:#a79b91;text-decoration:none;font-size:.78rem;margin-bottom:1.6rem}.detail-back:hover{color:#ff9b55}.detail-error,.action-error{padding:1.4rem;border:1px solid #753c33;background:#291a17;border-radius:.8rem;color:#e2a89b}.action-error{margin-bottom:1rem;font-size:.85rem}.profile-heading{padding-bottom:1.5rem}.profile-title h1,.entity-title h1{font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.profile-title p{display:flex;align-items:center;gap:.5rem;margin:0;color:#9f948c;font-size:.8rem}.profile-eyebrow{display:flex;align-items:center;gap:.5rem;font-size:.57rem;letter-spacing:.14em;color:#ae8d72}.admin-mark{border:1px solid #705035;border-radius:.2rem;padding:.15rem .3rem;color:#eaa16a}.detail-columns{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1.2rem;align-items:start}.detail-main,.detail-side{display:flex;flex-direction:column;gap:1.2rem;min-width:0}.detail-panel{border:1px solid #302d29;border-radius:.9rem;padding:1.5rem;background:#1a1919}.detail-panel h2{font-size:1rem;font-weight:650;margin:0 0 1rem;letter-spacing:-.02em;display:flex;align-items:center;gap:.6rem}.detail-panel h2>:deep(svg){font-size:.9rem;color:#d88d52}.prose{white-space:pre-line;color:#b4aca6;line-height:1.9;font-size:.86rem;margin:0 0 1rem;overflow-wrap:anywhere}.prose:last-child{margin-bottom:0}.profile-tags,.interest-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.4rem}.profile-tags>*{font-size:.7rem;background:#36271d;border:1px solid #5c3c25;padding:.4rem .7rem;color:#e8a571;border-radius:.4rem;text-decoration:none}.interest-list{margin-top:0}.interest-list>span{font-size:.78rem;border:1px solid #3e3831;padding:.55rem .75rem;border-radius:.5rem;color:#b8aaa0;background:#24211e}.fact-list{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:.85rem}.fact-list>li{display:flex;align-items:baseline;gap:.7rem;font-size:.84rem;color:#bcb1a8;line-height:1.6}.fact-list>li>:deep(svg){color:#dd9259;font-size:.75rem;flex-shrink:0}.profile-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:1.3rem}.profile-numbers>div{display:flex;flex-direction:column;gap:.25rem}.profile-numbers strong{font-size:1.55rem;color:#f5dbc7;font-weight:600}.profile-numbers span{font-size:.59rem;color:#96877b}.team-history{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:#c4b7ac;font-size:.75rem;padding:.6rem 0}.team-history>span{flex:1}.team-history>:deep(svg){color:#cf8b57}.profile-import>:deep(svg){color:#e49960}.profile-import h3{font-size:.9rem;margin:.8rem 0 .5rem}.profile-import p,.detail-note p{font-size:.73rem;color:#958b83;line-height:1.7}.profile-import>a,.detail-note>a{font-size:.72rem;color:#d08b58;text-decoration:none}.entity-cover{position:relative;min-height:10rem;border:1px solid #45382d;border-radius:1rem;background:linear-gradient(115deg,#302b22,#161c17);padding:1.3rem;overflow:hidden;display:flex;align-items:flex-end}.entity-cover>:deep(svg){font-size:8rem;position:absolute;right:3rem;top:.7rem;color:#d0c2a814;transform:rotate(-15deg)}.entity-cover--books{background:linear-gradient(120deg,#37302a,#1b1c20)}.entity-cover--challenges{background:linear-gradient(120deg,#4b2e20,#1e1715)}.entity-cover--teams{background:linear-gradient(120deg,#293930,#141a16)}.cover-grid{position:absolute;inset:0;background-image:linear-gradient(#ffffff05 1px,transparent 1px),linear-gradient(90deg,#ffffff05 1px,transparent 1px);background-size:2rem 2rem;mask-image:linear-gradient(90deg,transparent,#000)}.cover-meta{display:flex;gap:.7rem;align-items:center;position:relative}.cover-meta>span{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;background:#0004;padding:.4rem .65rem;border:1px solid #ffffff16;border-radius:.3rem;color:#c6bdaa}.entity-heading{display:flex;align-items:center;gap:1rem;justify-content:space-between;padding:1.6rem 0}.entity-motto{margin:.5rem 0 0;color:#bc8c66;font-size:.9rem;font-style:italic}.info-row{display:flex;gap:.85rem;margin-bottom:1.4rem}.info-row>:deep(svg){color:#b98962;font-size:.95rem;margin-top:.2rem}.info-row>div{display:flex;flex-direction:column;gap:.25rem}.info-row small{font-size:.65rem;color:#8b7e74}.info-row strong{font-size:.8rem;font-weight:500;color:#d4c6ba;line-height:1.5}.info-row span{font-size:.7rem;color:#9b8a7b}.participation-notice{display:flex;gap:.5rem;align-items:center;padding:.7rem;border:1px solid #3e5944;background:#233328;color:#a8c6a9;border-radius:.5rem;font-size:.72rem;line-height:1.5;margin-bottom:1rem}.leave-button{margin-top:.4rem;font-size:.7rem}.join-hint,.closed-notice{font-size:.7rem;color:#94877b;line-height:1.7;margin:1rem 0 0}.closed-notice{padding:.7rem;text-align:center;border:1px solid #443b32;border-radius:.4rem}.participant-list{display:flex;flex-direction:column;gap:.8rem}.participant-row{border-top:1px solid #ffffff09;padding-top:.8rem}.participant-person,.author-link{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:#d1c7be}.participant-person strong,.author-link strong{font-size:.8rem;font-weight:500;display:block}.participant-person small,.author-link small{font-size:.65rem;color:#8f8277;display:block;margin-top:.2rem}.participant-items{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0 2.7rem}.participant-items>span{font-size:.65rem;color:#b8a18d;background:#29231f;padding:.25rem .45rem;border-radius:.3rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.section-heading>h2{margin:0}.section-heading>span{color:#98897d;font-size:.7rem}.challenge-progress{display:flex;align-items:baseline;gap:.5rem;margin-top:.6rem}.challenge-progress strong{font-size:2.4rem;letter-spacing:-.04em;color:#efb183;font-weight:600}.challenge-progress>span{color:#9a8879;font-size:.85rem}.progress-track{height:.45rem;border-radius:1rem;background:#392c22;overflow:hidden;margin-top:.9rem}.progress-track>span{display:block;height:100%;background:linear-gradient(90deg,#d77832,#ffb071);border-radius:1rem;transition:width .4s}.progress-caption{font-size:.7rem;color:#978578;margin-bottom:0}.personal-score{background:linear-gradient(140deg,#34251b,#211c18);border-color:#614026}.personal-score>span{display:block;font-size:.6rem;letter-spacing:.1em;color:#c88f64}.personal-score>strong{display:block;font-size:3rem;line-height:1.5;color:#ffb67e;letter-spacing:-.06em;font-weight:500}.personal-score>small{font-size:.7rem;color:#ba9171}.own-result{display:flex;justify-content:space-between;border-top:1px solid #ffffff0b;margin-top:.7rem;padding-top:.5rem;font-size:.7rem;color:#bda18b}.own-result>b{color:#e0b18a}.empty-inline{color:#8f8177;font-size:.8rem}.readers-button{display:flex;align-items:center;gap:.65rem;font:inherit;width:100%;color:#d3bcaa;background:#29211c;border:1px solid #44342a;border-radius:.5rem;padding:.8rem;margin-bottom:1rem;cursor:pointer}.readers-button:hover{border-color:#98714f}.readers-button strong{font-size:1.35rem;color:#f5b888}.readers-button span{font-size:.72rem}.detail-note>:deep(svg){color:#8b715b}.detail-note p{margin:.7rem 0}.detail-panel .n-button{min-height:2.75rem}@media(max-width:58rem){.detail-columns{grid-template-columns:minmax(0,1fr) 16rem}.detail-panel{padding:1.15rem}}@media(max-width:45rem){.detail-columns{grid-template-columns:1fr}.detail-side{grid-row:1}.profile-title h1{font-size:1.6rem}.entity-heading{align-items:flex-start;flex-direction:column}.entity-cover{min-height:8rem}.entity-cover>:deep(svg){font-size:6rem;right:2rem}.entity-title h1{font-size:1.8rem}.detail-note{display:none}.info-row{margin-bottom:1rem}.detail-side{gap:.8rem}.personal-score>strong{font-size:2.5rem}.detail-main,.detail-columns{gap:.8rem}.detail-back{margin-bottom:1rem}}
+.profile-title{min-width:0;width:100%}.profile-eyebrow{flex-wrap:wrap}.profile-id{font-variant-numeric:tabular-nums;color:#9f948c;white-space:nowrap}
+.detail-page{max-width:78rem;margin:0 auto}.detail-back{display:inline-flex;align-items:center;gap:.6rem;color:#a79b91;text-decoration:none;font-size:.78rem;margin-bottom:1.6rem}.detail-back:hover{color:#ff9b55}.detail-error,.action-error{padding:1.4rem;border:1px solid #753c33;background:#291a17;border-radius:.8rem;color:#e2a89b}.action-error{margin-bottom:1rem;font-size:.85rem}.profile-title h1,.entity-title h1{font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.profile-title p{display:flex;align-items:center;gap:.5rem;margin:0;color:#9f948c;font-size:.8rem}.profile-eyebrow{display:flex;align-items:center;gap:.5rem;font-size:.57rem;letter-spacing:.14em;color:#ae8d72}.admin-mark{border:1px solid #705035;border-radius:.2rem;padding:.15rem .3rem;color:#eaa16a}.detail-columns{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1.2rem;align-items:start}.detail-main,.detail-side{display:flex;flex-direction:column;gap:1.2rem;min-width:0}.detail-panel{border:1px solid #302d29;border-radius:.9rem;padding:1.5rem;background:#1a1919}.detail-panel h2{font-size:1rem;font-weight:650;margin:0 0 1rem;letter-spacing:-.02em;display:flex;align-items:center;gap:.6rem}.detail-panel h2>:deep(svg){font-size:.9rem;color:#d88d52}.prose{white-space:pre-line;color:#b4aca6;line-height:1.9;font-size:.86rem;margin:0 0 1rem;overflow-wrap:anywhere}.prose:last-child{margin-bottom:0}.profile-tags,.interest-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.4rem}.profile-tags>*{font-size:.7rem;background:#36271d;border:1px solid #5c3c25;padding:.4rem .7rem;color:#e8a571;border-radius:.4rem;text-decoration:none}.interest-list{margin-top:0}.interest-list>span{font-size:.78rem;border:1px solid #3e3831;padding:.55rem .75rem;border-radius:.5rem;color:#b8aaa0;background:#24211e}.fact-list{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:.85rem}.fact-list>li{display:flex;align-items:baseline;gap:.7rem;font-size:.84rem;color:#bcb1a8;line-height:1.6}.fact-list>li>:deep(svg){color:#dd9259;font-size:.75rem;flex-shrink:0}.profile-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:1.3rem}.profile-numbers>div{display:flex;flex-direction:column;gap:.25rem}.profile-numbers strong{font-size:1.55rem;color:#f5dbc7;font-weight:600}.profile-numbers span{font-size:.59rem;color:#96877b}.team-history{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:#c4b7ac;font-size:.75rem;padding:.6rem 0}.team-history>span{flex:1}.team-history>:deep(svg){color:#cf8b57}.profile-import>:deep(svg){color:#e49960}.profile-import h3{font-size:.9rem;margin:.8rem 0 .5rem}.profile-import p,.detail-note p{font-size:.73rem;color:#958b83;line-height:1.7}.profile-import>a,.detail-note>a{font-size:.72rem;color:#d08b58;text-decoration:none}.detail-heading{display:flex;align-items:center;gap:1rem;justify-content:space-between;padding:0 0 1.5rem}.entity-motto{margin:.5rem 0 0;color:#bc8c66;font-size:.9rem;font-style:italic}.info-row{display:flex;gap:.85rem;margin-bottom:1.4rem}.info-row>:deep(svg){color:#b98962;font-size:.95rem;margin-top:.2rem}.info-row>div{min-width:0;overflow-wrap:anywhere;display:flex;flex-direction:column;gap:.25rem}.info-row small{font-size:.65rem;color:#8b7e74}.info-row strong{font-size:.8rem;font-weight:500;color:#d4c6ba;line-height:1.5}.info-row span{font-size:.7rem;color:#9b8a7b}.participation-notice{display:flex;gap:.5rem;align-items:center;padding:.7rem;border:1px solid #3e5944;background:#233328;color:#a8c6a9;border-radius:.5rem;font-size:.72rem;line-height:1.5;margin-bottom:1rem}.leave-button{margin-top:.4rem;font-size:.7rem}.join-hint,.closed-notice{font-size:.7rem;color:#94877b;line-height:1.7;margin:1rem 0 0}.closed-notice{padding:.7rem;text-align:center;border:1px solid #443b32;border-radius:.4rem}.participant-list{display:flex;flex-direction:column;gap:.8rem}.participant-row{border-top:1px solid #ffffff09;padding-top:.8rem}.participant-person,.author-link{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:#d1c7be}.participant-person strong,.author-link strong{font-size:.8rem;font-weight:500;display:block}.participant-person small,.author-link small{font-size:.65rem;color:#8f8277;display:block;margin-top:.2rem}.participant-items{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0 2.7rem}.participant-items>span{font-size:.65rem;color:#b8a18d;background:#29231f;padding:.25rem .45rem;border-radius:.3rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.section-heading>h2{margin:0}.section-heading>span{color:#98897d;font-size:.7rem}.challenge-progress{display:flex;align-items:baseline;gap:.5rem;margin-top:.6rem}.challenge-progress strong{font-size:2.4rem;letter-spacing:-.04em;color:#efb183;font-weight:600}.challenge-progress>span{color:#9a8879;font-size:.85rem}.progress-track{height:.45rem;border-radius:1rem;background:#392c22;overflow:hidden;margin-top:.9rem}.progress-track>span{display:block;height:100%;background:linear-gradient(90deg,#d77832,#ffb071);border-radius:1rem;transition:width .4s}.progress-caption{font-size:.7rem;color:#978578;margin-bottom:0}.personal-score{background:linear-gradient(140deg,#34251b,#211c18);border-color:#614026}.personal-score>span{display:block;font-size:.6rem;letter-spacing:.1em;color:#c88f64}.personal-score>strong{display:block;font-size:3rem;line-height:1.5;color:#ffb67e;letter-spacing:-.06em;font-weight:500}.personal-score>small{font-size:.7rem;color:#ba9171}.own-result{display:flex;justify-content:space-between;border-top:1px solid #ffffff0b;margin-top:.7rem;padding-top:.5rem;font-size:.7rem;color:#bda18b}.own-result>b{color:#e0b18a}.empty-inline{color:#8f8177;font-size:.8rem}.readers-button{display:flex;align-items:center;gap:.65rem;font:inherit;width:100%;color:#d3bcaa;background:#29211c;border:1px solid #44342a;border-radius:.5rem;padding:.8rem;margin-bottom:1rem;cursor:pointer}.readers-button:hover{border-color:#98714f}.readers-button strong{font-size:1.35rem;color:#f5b888}.readers-button span{font-size:.72rem}.detail-note>:deep(svg){color:#8b715b}.detail-note p{margin:.7rem 0}.detail-panel .n-button{min-height:2.75rem}@media(max-width:58rem){.detail-columns{grid-template-columns:minmax(0,1fr) 16rem}.detail-panel{padding:1.15rem}}@media(max-width:45rem){.detail-columns{display:flex;flex-direction:column;align-items:stretch}.detail-main{display:contents}.detail-main>:first-child{order:-2}.detail-side{order:-1}.profile-title h1{font-size:1.6rem}.detail-heading{align-items:flex-start;flex-direction:column}.entity-title h1{font-size:1.8rem}.detail-note{display:none}.info-row{margin-bottom:1rem}.detail-side{gap:.8rem}.personal-score>strong{font-size:2.5rem}.detail-main,.detail-columns{gap:.8rem}.detail-back{margin-bottom:1rem}}
+.attendance-comment{margin:.35rem 0;color:var(--text);font-size:.85rem;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 

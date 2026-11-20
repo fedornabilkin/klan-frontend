@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import EventOrganizerField from './EventOrganizerField.vue';
 import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
@@ -15,7 +16,7 @@ const auth = useAuthStore()
 const busy = ref(false)
 const error = ref('')
 const tags = ref<Tag[]>([])
-const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', city: '', country: '', lat: null as number | null, lng: null as number | null, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: 20 as number | null, tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
+const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', city: '', country: '', lat: null as number | null, lng: null as number | null, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: null as number | null, organizer: null as Entity['organizer'], tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
 const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Добавить факт' }, { field: 'achievements', label: 'Достижения', addLabel: 'Добавить достижение' }] as const
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
@@ -65,7 +66,7 @@ watch(() => props.show, async show => {
     clanJoinedOn: user?.clanJoinedOn ?? '',
     city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null,
     start: localDate(item?.schedule?.start), end: localDate(item?.schedule?.end), motto: item?.motto ?? '', target: item?.goal?.target ?? 100,
-    unit: item?.goal?.unit ?? 'раз', capacity: item?.capacity ?? 20, tagIds: entity?.tags.map(tag => tag.id) ?? [],
+    unit: item?.goal?.unit ?? 'раз', capacity: item?.capacity ?? null, organizer: item?.organizer ?? null, tagIds: entity?.tags.map(tag => tag.id) ?? [],
     facts: normalizeProfileEntries(user?.facts, `${user?.id}:facts`),
     achievements: normalizeProfileEntries(user?.achievements, `${user?.id}:achievements`),
   }
@@ -101,7 +102,7 @@ async function save() {
   if (hasLocation.value && !(f.lat === null && f.lng === null) && (typeof f.lat !== 'number' || !Number.isFinite(f.lat) || f.lat < -90 || f.lat > 90 || typeof f.lng !== 'number' || !Number.isFinite(f.lng) || f.lng < -180 || f.lng > 180)) {
     error.value = 'Укажите обе координаты: широта от −90 до 90, долгота от −180 до 180, или оставьте обе пустыми.'; return
   }
-  if (props.resource === 'events' && (typeof f.capacity !== 'number' || !Number.isInteger(f.capacity) || f.capacity < 1 || f.capacity > 100000)) {
+  if (props.resource === 'events' && f.capacity != null && (typeof f.capacity !== 'number' || !Number.isInteger(f.capacity) || f.capacity < 1 || f.capacity > 100000)) {
     error.value = 'Укажите количество мест: целое число от 1 до 100 000.'; return
   }
   if (props.resource === 'challenges' && (typeof f.target !== 'number' || !Number.isFinite(f.target) || f.target <= 0 || f.target > 1e9 || !f.unit.trim())) {
@@ -122,7 +123,7 @@ async function save() {
       ...(hasLocation.value ? { location } : {}),
       ...(props.resource === 'teams' ? { motto: f.motto } : {}),
       ...(props.resource === 'challenges' ? { goal: { target: f.target, unit: f.unit.trim(), scope: 'participant' } } : {}),
-      ...(props.resource === 'events' ? { capacity: f.capacity } : {}),
+      ...(props.resource === 'events' ? { capacity: f.capacity ?? null, organizer: f.organizer ?? null } : {}),
     }
   busy.value = true
   try {
@@ -172,8 +173,10 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
         input.date-field(v-model="form.start" type="datetime-local" required)
       NFormItem(label="Окончание" required)
         input.date-field(v-model="form.end" type="datetime-local" required)
-    NFormItem(v-if="resource === 'events'" label="Количество мест")
-      NumberField(v-model="form.capacity" aria-label="Количество мест" required min="1" max="100000")
+    template(v-if="resource === 'events'")
+      NFormItem(label="Количество мест")
+        NumberField(v-model="form.capacity" aria-label="Количество мест" placeholder="Без ограничения" min="1" max="100000")
+      EventOrganizerField(v-if="show" v-model="form.organizer" :initial-user="entity && 'organizerUser' in entity ? entity.organizerUser : undefined")
     NFormItem(v-if="resource === 'teams'" label="Девиз")
       NInput(v-model:value="form.motto")
     .editor-columns(v-if="resource === 'challenges'")

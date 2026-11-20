@@ -151,7 +151,7 @@ function buildParticipation(value: unknown, person: (value: unknown) => User, te
   if (target !== undefined && target < 0) throw new InvalidDtoError('participant.target');
   const teamRole = dto.teamRole;
   if (teamRole != null && teamRole !== 'captain' && teamRole !== 'deputy' && teamRole !== 'member') throw new InvalidDtoError('participant.teamRole');
-  return { user: person(dto.user), ...(teamRole && { teamRole }), team: team(dto.team), items: array(dto.items, buildItem, 'participant.items'), target };
+  return { user: person(dto.user), ...(teamRole && { teamRole }), team: team(dto.team), items: array(dto.items, buildItem, 'participant.items'), comment: dto.comment == null ? undefined : string(dto.comment, 'participant.comment'), target };
 }
 function buildResult(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): ChallengeResult {
   const dto = object(value, 'result');
@@ -174,7 +174,7 @@ export class CommunityEntity implements Entity {
   activeTeamChallenges?: Entity['activeTeamChallenges'];
   challengeTeams?: NonNullable<Participation['team']>[];
   participants!: Participation[]; author?: User; motto?: string; content?: string; goal?: Entity['goal'];
-  results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
+  results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number; organizer?: Entity['organizer']; organizerUser?: User;
   constructor(data: Entity) { Object.assign(this, data); }
   get displayName(): string { return this.title; }
   publicId?: number; participantCount?: number; teamCount?: number; readerCount?: number;
@@ -192,6 +192,7 @@ export class EntityBuilder {
     const type = string(dto.type, 'entity.type');
     if (!entityTypes.has(type)) throw new InvalidDtoError('entity.type');
     const schedule = dto.schedule == null ? undefined : object(dto.schedule, 'schedule');
+    const organizer = dto.organizer == null ? undefined : object(dto.organizer, 'organizer');
     const goal = dto.goal == null ? undefined : object(dto.goal, 'goal');
     const people = array(dto.people, value => new UserBuilder().from(value).build(), 'people');
     const teams = array(dto.teams, buildTeam, 'teams');
@@ -224,6 +225,8 @@ export class EntityBuilder {
       goal: goal ? { target: number(goal.target, 'goal.target'), unit: string(goal.unit, 'goal.unit'), ...(goal.scope === 'participant' && {scope:'participant' as const}) } : undefined,
       results: array(dto.results, value => buildResult(value, person, team), 'results'), readers: array(dto.readers, person, 'readers'),
       pendingResults: array(dto.pendingResults, value => buildPendingResult(value, person, team), 'pendingResults'),
+      organizer: organizer && ('userId' in organizer ? { userId: string(organizer.userId, 'organizer.userId') } : { name: string(organizer.name, 'organizer.name') }),
+      organizerUser: dto.organizerUser == null ? undefined : person(dto.organizerUser),
       capacity: dto.capacity == null ? undefined : number(dto.capacity, 'capacity'),
     });
   }

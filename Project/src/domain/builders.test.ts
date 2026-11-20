@@ -24,6 +24,20 @@ describe('DTO → Builder → Domain', () => {
     expect(entity.results![0]!.team?.publicId).toBe(2);
     expect(() => new EntityBuilder().from({...dto,people:[]}).build()).toThrow(InvalidDtoError);
   });
+  it('reads event organizers from the people dictionary and keeps attendance notes as plain text', () => {
+    const dto = { id: 'event', type: 'events', title: 'Встреча', capacity: null, people: [user],
+      organizer: { userId: user.id }, organizerUser: 0, participants: [{ user: 0, comment: '<Чай>', items: [] }] };
+    const event = new EntityBuilder().from(dto).build();
+    expect(event.organizerUser).toBe(event.participants[0]!.user);
+    expect(event.participants[0]!.comment).toBe('<Чай>');
+    expect(event.capacity).toBeUndefined();
+    const external = new EntityBuilder().from({ ...dto, organizer: { name: 'Клуб' }, organizerUser: undefined }).build();
+    expect(external.organizer).toEqual({ name: 'Клуб' });
+    const legacy = new EntityBuilder().from({ id: 'old', type: 'events', title: 'Поход', author: user, capacity: 10 }).build();
+    expect(legacy.organizer).toBeUndefined();
+    expect(legacy.organizerUser).toBeUndefined();
+    expect(legacy.capacity).toBe(10);
+  });
   it('preserves an optional callsign from the profile DTO', () => {
     expect(new UserBuilder().from({ ...user, callsign: 'Сокол' }).build().callsign).toBe('Сокол');
     expect(new UserBuilder().from(user).build().callsign).toBeUndefined();
