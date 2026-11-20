@@ -1,6 +1,6 @@
 import type { User } from '@shared/contracts';
 import { isCalendarDate } from '@shared/profile-entries';
-import { formatProfileName, normalizeTelegramUsername } from '@shared/profile-identity';
+import { formatProfileName, latestProfileDate, normalizeTelegramUsername } from '@shared/profile-identity';
 
 export interface IdentityDraft {
   firstName: string;
@@ -9,9 +9,11 @@ export interface IdentityDraft {
   callsign: string;
   username: string;
   birthDate: string;
+  clanJoinedOn: string;
 }
-export type IdentityPatch = Partial<Omit<IdentityDraft, 'birthDate' | 'username'>> & {
+export type IdentityPatch = Partial<Omit<IdentityDraft, 'birthDate' | 'clanJoinedOn' | 'username'>> & {
   birthDate?: string | null;
+  clanJoinedOn?: string | null;
   username?: string | null;
 };
 export type IdentitySavedField = keyof IdentityDraft | 'name' | 'initials';
@@ -32,15 +34,12 @@ export function identityDraft(user: Pick<User, 'name' | keyof IdentityDraft>): {
       callsign: user.callsign || '',
       username: user.username || '',
       birthDate: user.birthDate || '',
+      clanJoinedOn: user.clanJoinedOn || '',
     },
   };
 }
 
-export function localCalendarDate(now = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-export function identityPatch(draft: IdentityDraft, original: IdentityDraft, today = localCalendarDate()): IdentityPatch {
+export function identityPatch(draft: IdentityDraft, original: IdentityDraft, today = latestProfileDate()): IdentityPatch {
   const patch: IdentityPatch = {};
   const nameFields = ['firstName', 'lastName', 'middleName'] as const;
   if (nameFields.some(field => draft[field].trim() !== original[field].trim())) {
@@ -61,6 +60,10 @@ export function identityPatch(draft: IdentityDraft, original: IdentityDraft, tod
   if (draft.birthDate !== original.birthDate) {
     if (draft.birthDate && (!isCalendarDate(draft.birthDate) || draft.birthDate > today)) throw new Error('Укажите существующую дату рождения, не позднее сегодняшнего дня, или оставьте поле пустым.');
     patch.birthDate = draft.birthDate || null;
+  }
+  if (draft.clanJoinedOn !== original.clanJoinedOn) {
+    if (draft.clanJoinedOn && (!isCalendarDate(draft.clanJoinedOn) || draft.clanJoinedOn > today)) throw new Error('Укажите дату вступления в Клан не позднее сегодняшнего дня.');
+    patch.clanJoinedOn = draft.clanJoinedOn || null;
   }
   return patch;
 }

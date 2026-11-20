@@ -126,13 +126,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
             p Точка на карте — начало настоящего знакомства.
           span.map-badge НА СВЯЗИ
         .map-tools
-          CommunityTagFilter.map-tag-filter(:limit="4" :show-all="false" v-model="selectedTags" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
-            template(#search)
-              .map-search
-                Icon(name="magnifying-glass")
-                input(v-model="q" placeholder="Найти участника" aria-label="Поиск участников на карте по имени, городу или интересам")
-                button.icon-button(v-if="q" aria-label="Очистить поиск" @click="q = ''")
-                  Icon(name="xmark")
+          CommunityTagFilter.map-tag-filter(v-model="selectedTags" v-model:query="q" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
         p.inline-error(v-if="geographyError") {{ geographyError }}
           button.button.small(@click="loadMap") Повторить
         ErrorBoundary
@@ -245,7 +239,6 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
 .map-panel .panel-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
 .map-panel .map-badge{justify-self:end;align-self:start}
 .map-tag-filter{margin:0 0 1rem}
-.map-search,.map-search input{min-width:0}
 .dashboard-teams{padding:0 1.2rem 1.2rem;display:grid;gap:.85rem}
 .own-team,.leader-card{border:1px solid var(--border);border-radius:.55rem;min-width:0;overflow-wrap:anywhere}
 .own-team{display:flex;align-items:center;gap:.8rem;padding:1rem;background:var(--surface-raised);border-color:#695644}

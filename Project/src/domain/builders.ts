@@ -1,3 +1,4 @@
+import { latestProfileDate } from '@shared/profile-identity';
 import type { Activity, ChallengePendingResult, ChallengeResult, Entity, Item, Location, Participation, ProfileEntry, ProfileEntryInput, ProfileTeamSummary, Resource, Tag, User } from '@shared/contracts';
 import { accessLevels, capabilities, type AccessSummary } from '@shared/access';
 import { isCalendarDate, normalizeProfileEntries } from '@shared/profile-entries';
@@ -31,9 +32,9 @@ function publicId(value: unknown, field: string): number | undefined {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new InvalidDtoError(field);
   return value;
 }
-function birthDate(value: unknown): string | null {
+function profileDate(value: unknown, field: string): string | null {
   if (value == null) return null;
-  if (typeof value !== 'string' || !isCalendarDate(value) || value > new Date().toISOString().slice(0, 10)) throw new InvalidDtoError('user.birthDate');
+  if (typeof value !== 'string' || !isCalendarDate(value) || value > latestProfileDate()) throw new InvalidDtoError(field);
   return value;
 }
 function buildProfileTeam(value: unknown): ProfileTeamSummary {
@@ -83,7 +84,7 @@ function buildLocation(value: unknown): Location {
 
 export class UserModel implements User {
   id!: string; publicId?: number; name!: string; username?: string; callsign?: string; role!: User['role']; bio!: string;
-  firstName?: string; lastName?: string; middleName?: string; birthDate!: string | null; activeTeams!: ProfileTeamSummary[]; hasActiveTeam?: boolean;
+  firstName?: string; lastName?: string; middleName?: string; birthDate!: string | null; clanJoinedOn!: string | null; activeTeams!: ProfileTeamSummary[]; hasActiveTeam?: boolean;
   location!: Location; tags!: Tag[]; initials!: string; color!: string;
   facts!: ProfileEntry[]; interests!: string[]; achievements!: ProfileEntry[];
   stats!: User['stats']; joinedAt!: string;
@@ -113,7 +114,8 @@ export class UserBuilder {
       lastName: dto.lastName == null ? undefined : string(dto.lastName, 'user.lastName'),
       middleName: dto.middleName == null ? undefined : string(dto.middleName, 'user.middleName'),
       hasActiveTeam: typeof dto.hasActiveTeam === 'boolean' ? dto.hasActiveTeam : undefined,
-      birthDate: birthDate(dto.birthDate), activeTeams: array(dto.activeTeams, buildProfileTeam, 'user.activeTeams'),
+      birthDate: profileDate(dto.birthDate, 'user.birthDate'), clanJoinedOn: profileDate(dto.clanJoinedOn, 'user.clanJoinedOn'),
+      activeTeams: array(dto.activeTeams, buildProfileTeam, 'user.activeTeams'),
       bio: string(dto.bio, 'user.bio', ''), location: buildLocation(dto.location),
       tags: array(dto.tags, buildTag, 'user.tags'),
       initials: string(dto.initials, 'user.initials', name.split(' ').map(v => v[0]).slice(0, 2).join('')),

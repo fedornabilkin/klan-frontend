@@ -16,10 +16,10 @@ export function parsePage(value: unknown): number {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : 1;
 }
-export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?: number } = {}) {
+export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?: MaybeRefOrGetter<number> } = {}) {
   const route = useRoute();
   const router = useRouter();
-  const limit = computed(() => toValue(resource) === 'teams' ? 30 : options.limit ?? 12);
+  const limit = computed(() => toValue(resource) === 'teams' ? 30 : toValue(options.limit) ?? 12);
   const filters = reactive<ListFilters>(parseFilters(route.query));
   const items = shallowRef<(UserModel | CommunityEntity)[]>([]);
   const meta = ref<ListMeta>({ page: 1, pages: 1, limit:limit.value, total: 0 });

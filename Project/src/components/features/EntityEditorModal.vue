@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
 import type { ApiResponse, Entity, ProfileEntry, Resource, Tag, User } from '@shared/contracts'
+import { latestProfileDate } from '@shared/profile-identity'
 import { isCalendarDate, normalizeProfileEntries } from '@shared/profile-entries'
 import NumberField from '@/components/ui/NumberField.vue'
 import { api } from '@/services/api'
@@ -13,7 +14,7 @@ const auth = useAuthStore()
 const busy = ref(false)
 const error = ref('')
 const tags = ref<Tag[]>([])
-const form = ref({ title: '', description: '', content: '', status: 'active', category: '', city: '', country: '', lat: null as number | null, lng: null as number | null, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: 20 as number | null, tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
+const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', city: '', country: '', lat: null as number | null, lng: null as number | null, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: 20 as number | null, tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
 const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Добавить факт' }, { field: 'achievements', label: 'Достижения', addLabel: 'Добавить достижение' }] as const
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
@@ -60,6 +61,7 @@ watch(() => props.show, async show => {
   form.value = {
     title: item?.title ?? user?.name ?? '', description: item?.description ?? user?.bio ?? '', content: item?.content ?? '',
     status: item?.status ?? (props.resource === 'feedback' ? 'open' : 'active'), category: item?.category ?? ({ events: 'offline', challenges: 'count', rules: 'general' } as Partial<Record<Resource, string>>)[props.resource] ?? '',
+    clanJoinedOn: user?.clanJoinedOn ?? '',
     city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null,
     start: localDate(item?.schedule?.start), end: localDate(item?.schedule?.end), motto: item?.motto ?? '', target: item?.goal?.target ?? 100,
     unit: item?.goal?.unit ?? 'раз', capacity: item?.capacity ?? 20, tagIds: entity?.tags.map(tag => tag.id) ?? [],
@@ -111,6 +113,7 @@ async function save() {
   const selectedTags = tags.value.filter(tag => f.tagIds.includes(tag.id))
   const payload = isUser.value
     ? { name: f.title.trim(), bio: f.description, location, tags: selectedTags,
+        ...(props.entity && 'name' in props.entity && f.clanJoinedOn !== (props.entity.clanJoinedOn ?? '') && { clanJoinedOn:f.clanJoinedOn || null }),
         facts: f.facts.map(entry => ({ ...entry })), achievements: f.achievements.map(entry => ({ ...entry })) }
     : {
         title: f.title.trim(), description: f.description, content: f.content, ...(auth.can('content.manage') ? { status: f.status } : {}), category: f.category, tags: selectedTags,
@@ -179,6 +182,8 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
         NInput(v-model:value="form.unit" placeholder="раз / км / посещений")
     p.editor-hint(v-if="resource === 'challenges'") {{ form.category === 'attendance' ? 'Факт посещения: участник отмечает 0 или 1 за день. Укажите число посещений для одного участника за весь период.' : 'Укажите личную цель за весь период. Цели команды и челленджа рассчитываются по числу участников.' }}
     template(v-if="isUser")
+      NFormItem(label="Дата вступления в Клан")
+        input.date-field(v-model="form.clanJoinedOn" type="date" :max="latestProfileDate()" aria-label="Дата вступления в Клан")
       fieldset.entry-section(v-for="section in entrySections" :key="section.field")
         legend {{ section.label }}
         p.entry-hint Дату можно оставить пустой, если она неизвестна.

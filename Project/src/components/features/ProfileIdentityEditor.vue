@@ -2,8 +2,8 @@
 import { computed, nextTick, reactive, ref, useId, watch } from 'vue';
 import { NButton, NInput } from 'naive-ui';
 import type { ApiResponse, User } from '@shared/contracts';
-import { normalizeTelegramUsername } from '@shared/profile-identity';
-import { identityDraft, identityPatch, identitySavedFields, localCalendarDate, type IdentityDraft, type IdentitySavedField } from '@/domain/profile-identity';
+import { latestProfileDate, normalizeTelegramUsername } from '@shared/profile-identity';
+import { identityDraft, identityPatch, identitySavedFields, type IdentityDraft, type IdentitySavedField } from '@/domain/profile-identity';
 import { api, errorMessage } from '@/services/api';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -22,9 +22,8 @@ const telegramUsername = computed(() => {
   const value = normalizeTelegramUsername(props.user.username || '');
   return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(value) ? value : '';
 });
-const birthDateLabel = computed(() => props.user.birthDate
-  ? new Date(`${props.user.birthDate}T00:00:00Z`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-  : '');
+const dateFormat = new Intl.DateTimeFormat('ru-RU', { day:'numeric', month:'long', year:'numeric', timeZone:'UTC' });
+function formatDate(day: string) { return dateFormat.format(new Date(`${day}T00:00:00Z`)); }
 
 async function start() {
   if (!props.editable || busy.value) return;
@@ -103,7 +102,11 @@ async function save() {
         </div>
         <div class="identity-field">
           <label :for="`${formId}-birthDate`">Дата рождения</label>
-          <input :id="`${formId}-birthDate`" v-model="draft.birthDate" class="identity-date" type="date" :max="localCalendarDate()" :disabled="busy" autocomplete="bday" />
+          <input :id="`${formId}-birthDate`" v-model="draft.birthDate" class="identity-date" type="date" :max="latestProfileDate()" :disabled="busy" autocomplete="bday" />
+        </div>
+        <div class="identity-field">
+          <label :for="`${formId}-clanJoinedOn`">Дата вступления в Клан</label>
+          <input :id="`${formId}-clanJoinedOn`" v-model="draft.clanJoinedOn" class="identity-date" type="date" :max="latestProfileDate()" :disabled="busy" />
         </div>
       </div>
       <p class="identity-hint">Необязательные поля можно оставить пустыми.</p>
@@ -114,9 +117,10 @@ async function save() {
       </div>
     </form>
     <template v-else>
-      <div v-if="telegramUsername || birthDateLabel" class="identity-contact">
+      <div v-if="telegramUsername || user.birthDate || user.clanJoinedOn" class="identity-contact">
         <a v-if="telegramUsername" :href="`https://t.me/${telegramUsername}`" target="_blank" rel="noopener noreferrer"><Icon name="telegram" />@{{ telegramUsername }}</a>
-        <span v-if="birthDateLabel" class="identity-birthday"><Icon name="calendar" /><span>Дата рождения: <time :datetime="user.birthDate || undefined">{{ birthDateLabel }}</time></span></span>
+        <span v-if="user.birthDate" class="identity-date-label"><Icon name="calendar" /><span>Дата рождения: <time :datetime="user.birthDate || undefined">{{ formatDate(user.birthDate) }}</time></span></span>
+        <span v-if="user.clanJoinedOn" class="identity-date-label"><Icon name="calendar" /><span>В Клане с <time :datetime="user.clanJoinedOn">{{ formatDate(user.clanJoinedOn) }}</time></span></span>
       </div>
     </template>
     <span class="identity-announcement" role="status">{{ announcement }}</span>
@@ -124,5 +128,5 @@ async function save() {
 </template>
 
 <style scoped>
-.profile-identity{min-width:0}.identity-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem .8rem}.identity-heading h1{min-width:0;overflow-wrap:anywhere;font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.identity-edit{flex-shrink:0;min-height:2.75rem;font-size:.75rem}.identity-affiliation,.identity-callsign,.identity-contact,.identity-birthday{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}.identity-affiliation{margin:.25rem 0 .5rem;gap:.5rem .8rem}.identity-callsign{color:#a99e94;font-size:.85rem}.identity-callsign strong{color:#e7bd99;font-weight:600}.identity-team{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #5a4130;border-radius:.35rem;padding:.35rem .55rem;background:#32251c;color:#ebbd99;text-decoration:none;font-size:.75rem;overflow-wrap:anywhere}.identity-team:hover{border-color:#d88d52;color:#ffcfaa}.identity-contact{gap:.25rem 1.1rem;margin:.15rem 0 .5rem;font-size:.8rem}.identity-contact a{display:inline-flex;align-items:center;gap:.45rem;min-height:2rem;color:#e7a471;text-decoration:none;overflow-wrap:anywhere}.identity-contact a:hover{text-decoration:underline;color:#ffc393}.identity-birthday{color:#a99e94;font-size:.75rem}.identity-team:focus-visible,.identity-contact a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem}.identity-form{margin:.6rem 0 1rem;border:1px solid #44392f;border-radius:.7rem;background:#1c1917;padding:1rem;display:grid;gap:.8rem}.identity-form h2{margin:0;font-size:.95rem;font-weight:600}.identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem}.identity-field{min-width:0;display:flex;flex-direction:column;gap:.35rem}.identity-field label{font-size:.75rem;color:#c9b7a8}.identity-date{box-sizing:border-box;width:100%;min-width:0;height:34px;border:1px solid #ffffff17;border-radius:3px;padding:0 .7rem;background:#ffffff1a;color:#eee;font:inherit;font-size:.85rem;color-scheme:dark}.identity-date:focus{outline:1px solid var(--accent);border-color:var(--accent)}.identity-date:disabled{opacity:.5}.identity-form .identity-hint{margin:0;color:#aa998c;font-size:.75rem;line-height:1.65}.identity-form .identity-error{margin:0;color:#f2a19b;font-size:.8rem;line-height:1.5}.identity-actions{display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}.identity-actions .n-button{min-height:2.75rem}.identity-announcement{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:62rem){.identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:38rem){.identity-grid{grid-template-columns:1fr}.identity-heading h1{font-size:1.6rem}.identity-actions .n-button{flex:1}.identity-heading{align-items:flex-start;flex-direction:column}.identity-form{padding:.8rem}}
+.profile-identity{min-width:0}.identity-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem .8rem}.identity-heading h1{min-width:0;overflow-wrap:anywhere;font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.identity-edit{flex-shrink:0;min-height:2.75rem;font-size:.75rem}.identity-affiliation,.identity-callsign,.identity-contact,.identity-date-label{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}.identity-affiliation{margin:.25rem 0 .5rem;gap:.5rem .8rem}.identity-callsign{color:#a99e94;font-size:.85rem}.identity-callsign strong{color:#e7bd99;font-weight:600}.identity-team{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #5a4130;border-radius:.35rem;padding:.35rem .55rem;background:#32251c;color:#ebbd99;text-decoration:none;font-size:.75rem;overflow-wrap:anywhere}.identity-team:hover{border-color:#d88d52;color:#ffcfaa}.identity-contact{gap:.25rem 1.1rem;margin:.15rem 0 .5rem;font-size:.8rem}.identity-contact a{display:inline-flex;align-items:center;gap:.45rem;min-height:2rem;color:#e7a471;text-decoration:none;overflow-wrap:anywhere}.identity-contact a:hover{text-decoration:underline;color:#ffc393}.identity-date-label{color:#a99e94;font-size:.75rem}.identity-team:focus-visible,.identity-contact a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem}.identity-form{margin:.6rem 0 1rem;border:1px solid #44392f;border-radius:.7rem;background:#1c1917;padding:1rem;display:grid;gap:.8rem}.identity-form h2{margin:0;font-size:.95rem;font-weight:600}.identity-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem}.identity-field{min-width:0;display:flex;flex-direction:column;gap:.35rem}.identity-field label{font-size:.75rem;color:#c9b7a8}.identity-date{box-sizing:border-box;width:100%;min-width:0;height:34px;border:1px solid #ffffff17;border-radius:3px;padding:0 .7rem;background:#ffffff1a;color:#eee;font:inherit;font-size:.85rem;color-scheme:dark}.identity-date:focus{outline:1px solid var(--accent);border-color:var(--accent)}.identity-date:disabled{opacity:.5}.identity-form .identity-hint{margin:0;color:#aa998c;font-size:.75rem;line-height:1.65}.identity-form .identity-error{margin:0;color:#f2a19b;font-size:.8rem;line-height:1.5}.identity-actions{display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}.identity-actions .n-button{min-height:2.75rem}.identity-announcement{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:62rem){.identity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:38rem){.identity-grid{grid-template-columns:1fr}.identity-heading h1{font-size:1.6rem}.identity-actions .n-button{flex:1}.identity-heading{align-items:flex-start;flex-direction:column}.identity-form{padding:.8rem}}
 </style>

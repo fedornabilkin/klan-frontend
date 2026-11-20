@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { NAlert, NButton, NInput, NUpload, type UploadFileInfo } from 'naive-ui'
 import type { ApiResponse, ProfileEntryInput, User } from '@shared/contracts'
 import { isCalendarDate } from '@shared/profile-entries'
-import { formatProfileName, normalizeTelegramUsername } from '@shared/profile-identity'
+import { formatProfileName, latestProfileDate, normalizeTelegramUsername } from '@shared/profile-identity'
 import { userPath } from '@shared/user-links'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -17,7 +17,7 @@ const error = ref('')
 const success = ref('')
 const busy = ref(false)
 const exportBusy = ref(false)
-type ImportIdentity = Partial<Pick<User, 'firstName' | 'middleName' | 'lastName' | 'callsign' | 'birthDate'>> & { username?: string | null }
+type ImportIdentity = Partial<Pick<User, 'firstName' | 'middleName' | 'lastName' | 'callsign' | 'birthDate' | 'clanJoinedOn'>> & { username?: string | null }
 type ImportProfile = ImportIdentity & { name: string; bio: string; location: { city: string; country: string; lat: number | null; lng: number | null }; facts: ProfileEntryInput[]; interests: string[]; achievements: ProfileEntryInput[]; tags: { id: string; name: string }[] }
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value) }
 function strings(value: unknown, field: string, maxLength = 250) {
@@ -71,9 +71,12 @@ function parseProfile(text: string): ImportProfile {
     if (username && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) throw new Error('Username Telegram: от 5 до 32 латинских букв, цифр или знаков подчёркивания; первый символ — буква.')
     identity.username = username || null
   }
-  if (p.birthDate !== undefined) {
-    if (p.birthDate !== null && (typeof p.birthDate !== 'string' || !isCalendarDate(p.birthDate) || p.birthDate > new Date().toISOString().slice(0, 10))) throw new Error('Дата рождения birthDate — существующая дата ГГГГ-ММ-ДД, не позднее сегодняшней, или null для очистки.')
-    identity.birthDate = p.birthDate as string | null
+  for (const field of ['birthDate', 'clanJoinedOn'] as const) {
+    const value = p[field];
+    if (value === undefined) continue;
+    if (value !== null && (typeof value !== 'string' || !isCalendarDate(value) || value > latestProfileDate()))
+      throw new Error(`Поле ${field} должно содержать дату ГГГГ-ММ-ДД не позднее сегодняшней или null для очистки.`);
+    identity[field] = value;
   }
   if (p.bio !== undefined && (typeof p.bio !== 'string' || p.bio.length > 5000)) throw new Error('Поле bio должно содержать текст до 5000 символов.')
   const location = record(p.location) ? p.location : {}

@@ -26,12 +26,13 @@ RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resour
     p.card-location
       Icon(name="location-dot")
       | {{ [user.location.city, user.location.country].filter(value => value.trim()).join(', ') || 'Город не указан' }}
-    p.card-description {{ user.bio || 'Участник сообщества KLAN' }}
+    p.card-description(v-if="user.bio.trim()") {{ user.bio }}
     .card-tags
       span(v-for="tag in memberTags.slice(0, 3)" :key="tag.id") {{ tag.name }}
       span.more-tags(v-if="remainingTags.length" :title="remainingTags.map(tag => tag.name).join(', ')" :aria-label="`Ещё ${remainingTags.length} тегов: ${remainingTags.map(tag => tag.name).join(', ')}`") +{{ remainingTags.length }}
     .person-bottom
       span {{ user.stats.events }} мероприятий
+      span.member-tag-count Тегов: {{ memberTags.length }}
       Icon(name="arrow-up-right-from-square")
   template(v-else)
     .card-illustration(v-if="['events', 'challenges', 'teams', 'books'].includes(resource)" :class="coverClass")

@@ -16,7 +16,7 @@ import { resourceMeta } from '@/components/features/resourceMeta';
 const route = useRoute();
 const resource = computed(() => (route.meta.resource || route.path.split('/')[1]) as Resource);
 const meta = computed(() => resourceMeta[resource.value]);
-const list = useList(resource, { limit: 12 });
+const list = useList(resource, { limit: () => resource.value === 'users' ? 21 : 12 });
 const { items, loading, error, filters, page, refresh, setPage } = list;
 const pagination = list.meta;
 const { ranked: tags, counts: tagCounts, loading: tagsLoading, error: tagsError, refresh: refreshTags } = useCommunityTags(() => ['users','events','challenges','books'].includes(resource.value));
@@ -36,9 +36,13 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
       template(#icon)
         Icon(name="plus")
       | Предложить идею
+    .collection-tools(v-else-if="resource === 'users'")
+      .collection-count {{ pagination.total }} в сообществе
+      NSelect.list-select(v-model:value="filters.sort" :options="sortOptions" aria-label="Сортировка")
     .collection-count(v-else) {{ pagination.total }} в сообществе
-  .list-toolbar
-    NInput.list-search(v-model:value="filters.q" clearable :placeholder="resource === 'users' ? 'Имя, город, интересы…' : 'Поиск по названию и описанию…'" aria-label="Поиск")
+  CommunityTagFilter.member-tag-filter(v-if="resource === 'users'" v-model="selectedTags" v-model:query="filters.q" :tags="tags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
+  .list-toolbar(v-else)
+    NInput.list-search(v-model:value="filters.q" clearable placeholder="Поиск по названию и описанию…" aria-label="Поиск")
       template(#prefix)
         Icon(name="magnifying-glass")
     NSelect.list-select(v-model:value="filters.sort" :options="sortOptions" aria-label="Сортировка")
@@ -50,8 +54,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
     span {{ filters.city }}
     button(type="button" aria-label="Снять фильтр по городу" @click="filters.city = ''")
       Icon(name="xmark")
-  CommunityTagFilter.member-tag-filter(v-if="resource === 'users'" v-model="selectedTags" :tags="tags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
-  .filter-tags(v-else-if="tags.length && ['events','challenges','books'].includes(resource)")
+  .filter-tags(v-if="tags.length && ['events','challenges','books'].includes(resource)")
     button.filter-tag(type="button" :class="{ selected: !selectedTags.length }" @click="filters.tag = ''") Все интересы
     button.filter-tag(v-for="tag in tags.slice(0, 12)" :key="tag.id" type="button" :class="{selected:selectedTags.includes(tag.id)}" :aria-pressed="selectedTags.includes(tag.id)" @click="toggleTag(tag.id)") {{ tag.name }}
   .list-error(v-if="error" role="alert")
@@ -71,6 +74,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
 </template>
 
 <style scoped>
+.collection-tools{display:flex;align-items:center;flex-wrap:wrap;gap:.7rem}
 .member-tag-filter{margin-bottom:1.4rem;max-width:100%}
 .active-location{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .65rem;background:#34271d;border:1px solid #63442b;border-radius:.5rem;color:#dfa371;font-size:.75rem;margin-bottom:1rem}.active-location>button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:.2rem;display:flex}
 .feature-page{width:100%;max-width:88rem;margin:0 auto}.list-page-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.8rem}.collection-count{flex-shrink:0;font-size:.75rem;color:#8f8c88;padding:.4rem .7rem;border:1px solid #32302d;border-radius:2rem}.list-toolbar{display:flex;flex-wrap:wrap;gap:.7rem;margin-bottom:1rem}.list-search{min-width:15rem;flex:1}.list-select{width:11.5rem}.filter-tags{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1.4rem;scrollbar-width:thin}.filter-tag{font:inherit;font-size:.72rem;white-space:nowrap;background:#1b1b1c;border:1px solid #333033;border-radius:.45rem;padding:.6rem .8rem;color:#aaa6a3;cursor:pointer;transition:all .15s}.filter-tag:hover{border-color:#96613b;color:#ffe1c9}.filter-tag.selected{background:#3b291d;color:#ff9b53;border-color:#764421}.resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.list-pagination{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:2rem 0;font-size:.72rem;color:#88817b}.list-error{padding:2rem;background:#2b1818;border:1px solid #763f38;border-radius:1rem;color:#e6aca2}.list-empty{text-align:center;padding:3rem 1rem;border:1px dashed #3e3935;border-radius:1rem}.list-empty :deep(.n-button){margin-top:1rem}@media(max-width:70rem){.resource-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:42rem){.resource-grid{grid-template-columns:1fr}.list-page-heading{align-items:flex-start;flex-direction:column;margin-bottom:1.2rem}.list-toolbar{gap:.5rem}.list-search{flex-basis:100%}.list-select{flex:1;min-width:8.5rem}.list-pagination{flex-direction:column;align-items:center}.collection-count{display:none}.filter-tags{margin-bottom:1rem}.filter-tag{padding:.7rem .8rem}}

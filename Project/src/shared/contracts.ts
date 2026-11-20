@@ -10,6 +10,7 @@ export interface ProfileTeamSummary { id: string; publicId?: number; title: stri
 export interface User {
   id: string; name: string; username?: string; role: 'admin' | 'member';
   firstName?: string; lastName?: string; middleName?: string; birthDate?: string | null;
+  clanJoinedOn?: string | null;
   callsign?: string;
   hasActiveTeam?: boolean;
   activeTeams?: ProfileTeamSummary[];

@@ -33,6 +33,15 @@ describe('profile identity editing', () => {
     expect(identityPatch({ ...draft, username: '', birthDate: '' }, draft)).toEqual({ username: null, birthDate: null });
     expect(() => identityPatch({ ...draft, username: 'https://t.me/example' }, draft)).toThrow('Username Telegram');
   });
+  it('saves and clears the actual membership date independently', () => {
+    const { draft } = identityDraft({ name:'Иван Петров' });
+    const changed = { ...draft, clanJoinedOn:'2016-02-29' };
+    expect(draft.clanJoinedOn).toBe('');
+    expect(identityPatch(changed, draft)).toEqual({clanJoinedOn:'2016-02-29'});
+    expect(identityPatch(draft, changed)).toEqual({clanJoinedOn:null});
+    for (const clanJoinedOn of ['2010-02-29','9999-12-31'])
+      expect(() => identityPatch({ ...draft, clanJoinedOn },draft)).toThrow('дату вступления');
+  });
   it('accepts a leap-day birthday and rejects invalid or future dates', () => {
     const { draft } = identityDraft({ name: 'Иван Петров' });
     expect(identityPatch({ ...draft, birthDate: '2000-02-29' }, draft, '2026-11-13')).toEqual({ birthDate: '2000-02-29' });
