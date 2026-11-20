@@ -22,6 +22,7 @@ import EventItemsModal from '@/components/features/EventItemsModal.vue';
 import ChallengeJoinModal from '@/components/features/ChallengeJoinModal.vue';
 import ChallengeResultModal from '@/components/features/ChallengeResultModal.vue';
 import { challengeStandings } from '@/domain/challengeStandings';
+import TeamRoster from '@/components/features/TeamRoster.vue';
 import ChallengeStandings from '@/components/features/ChallengeStandings.vue';
 import ChallengeResultsSection from '@/components/features/ChallengeResultsSection.vue';
 import ReadersModal from '@/components/features/ReadersModal.vue';
@@ -77,13 +78,17 @@ function changeParticipation(joining: boolean) {
     if (kind === 'teams') await auth.restore(true);
   });
 }
+function rosterSaved(removedUserId?: string) {
+  void load();
+  if (removedUserId && removedUserId === auth.user?.id) void auth.restore(true);
+}
 function join(){if(resource.value==='challenges'){showJoin.value=true;return;}changeParticipation(true);}
 function leave(){changeParticipation(false);}
 function toggleRead(){void act(()=>api.put(`/books/${id.value}/read`,{read:!hasRead.value}));}
 watch([resource,id],([kind,next],[previous])=>{if(kind===previous&&record.value?.publicId&&String(record.value.publicId)===next)return;
   for (const modal of [showEditor,showItems,showJoin,showResult,showReaders]) modal.value=false;
   record.value=null;actionError.value='';refreshError.value='';void load();},{immediate:true});
-useRealtime(message=>{if(message.type==='invalidate'&&([resource.value,'*'].includes(message.resource)||(['users','challenges'].includes(resource.value)&&message.resource==='teams')))void load();});
+useRealtime(message=>{if(message.type==='invalidate'&&([resource.value,'*'].includes(message.resource)||(['users','challenges'].includes(resource.value)&&message.resource==='teams')||(resource.value==='teams' && message.resource==='challenges')))void load();});
 onBeforeUnmount(()=>controller?.abort());
 </script>
 
@@ -148,7 +153,7 @@ onBeforeUnmount(()=>controller?.abort());
           p Сохраните профиль или перенесите информацию из JSON.
           RouterLink(to="/profile/import") Импорт и экспорт
   template(v-else-if="record")
-    .entity-cover(v-if="resource !== 'challenges'" :class="`entity-cover--${resource}`")
+    .entity-cover(v-if="!['teams','challenges'].includes(resource)" :class="`entity-cover--${resource}`")
       .cover-grid
       Icon(:name="resourceMeta[resource].icon")
       .cover-meta
@@ -158,7 +163,7 @@ onBeforeUnmount(()=>controller?.abort());
       .entity-title
         .profile-eyebrow {{ resourceMeta[resource].singular.toUpperCase() }} / KLAN
         h1 {{ entity.title }}
-        StatusBadge(v-if="resource === 'challenges'" :status="entity.status")
+        StatusBadge(v-if="['teams','challenges'].includes(resource)" :status="entity.status")
         p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
       NButton(v-if="canEdit" secondary @click="showEditor = true")
         template(#icon)
@@ -190,7 +195,8 @@ onBeforeUnmount(()=>controller?.abort());
             p.progress-caption(v-if="entity.goal") {{ entity.goal.target.toLocaleString('ru-RU') }} {{ entity.goal.unit }} на человека × {{ participantLabel(standings.members) }}
           ChallengeStandings(:standings="standings" :challenge-id="entity.id" :unit="entity.goal?.unit || 'ед.'" :personal-goal="entity.goal?.target ?? 0" :current-user="auth.user?.id")
           ChallengeResultsSection(:key="`results-${entity.id}`" :entity="entity")
-        section.detail-panel(v-if="['events','teams'].includes(resource)")
+        TeamRoster(v-if="resource === 'teams'" :key="entity.id" :team="entity" :manage="auth.can('members.manage')" @saved="rosterSaved")
+        section.detail-panel(v-if="resource === 'events'")
           .section-heading
             h2 Участники
             span {{ entity.participants.length }}{{ entity.capacity ? ` / ${entity.capacity}` : '' }}
@@ -214,10 +220,10 @@ onBeforeUnmount(()=>controller?.abort());
             div
               small Где
               strong {{ [entity.location.city, entity.location.country].filter(value => value.trim()).join(', ') || 'Место не указано' }}
-          .info-row(v-if="entity.goal")
+          .info-row(v-if="entity.goal && resource !== 'teams'")
             Icon(name="bullseye")
             div
-              small {{ resource === 'challenges' ? 'Цель на одного участника' : 'Цель команды' }}
+              small {{ resource === 'challenges' ? 'Цель на одного участника' : 'Цель' }}
               strong {{ entity.goal.target.toLocaleString('ru-RU') }} {{ entity.goal.unit }}
           .info-row
             Icon(name="users")
@@ -238,11 +244,18 @@ onBeforeUnmount(()=>controller?.abort());
             | Записать результат
           p.join-hint(v-if="participant && resource === 'challenges' && !ended && !started") Запись результатов откроется {{ dateLabel(entity.schedule?.start) }}.
           p.closed-notice(v-if="ended") {{ resource === 'teams' ? 'Команда в архиве' : 'Участие завершено' }}
-          NButton.leave-button(v-if="participant && !ended" :type="resource === 'challenges' ? 'error' : 'default'" :secondary="resource === 'challenges'" :quaternary="resource !== 'challenges'" block :loading="busy" @click="leave")
+          NButton.leave-button(v-if="participant && resource !== 'teams' && !ended" :type="resource === 'challenges' ? 'error' : 'default'" :secondary="resource === 'challenges'" :quaternary="resource !== 'challenges'" block :loading="busy" @click="leave")
             template(v-if="resource === 'challenges'" #icon)
               Icon(name="right-from-bracket")
-            | {{ resource === 'teams' ? 'Покинуть команду' : 'Отменить участие' }}
+            | Отменить участие
           p.join-hint(v-if="resource === 'teams' && !participant && !ended") Одновременно можно состоять только в одной активной команде.
+        section.detail-panel.team-challenges(v-if="resource === 'teams'")
+          h2 Пройденные челленджи
+          article(v-for="challenge in entity.teamChallenges" :key="challenge.id")
+            RouterLink(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
+            div Результат: {{ challenge.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
+            div(v-if="challenge.target != null") Цель команды: {{ challenge.target.toLocaleString('ru-RU') }} {{ challenge.unit }}
+          p.empty-inline(v-if="!entity.teamChallenges?.length") У команды пока нет завершённых челленджей.
         section.detail-panel.personal-score(v-if="resource === 'challenges' && participant")
           span МОЙ РЕЗУЛЬТАТ
           strong {{ ownTotal.toLocaleString('ru-RU') }}
@@ -276,6 +289,7 @@ onBeforeUnmount(()=>controller?.abort());
 </template>
 
 <style scoped>
+.team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}
 .details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}
 .detail-panel .details-heading h2{margin:0}
 .challenge-participation{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .5rem;border-radius:1rem;background:#233328;color:#b4d8b8;font-size:.69rem;white-space:nowrap}

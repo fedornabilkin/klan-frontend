@@ -1,3 +1,5 @@
+import { searchTerm } from './useFilterDelay';
+import { useQueryFilters } from './useQueryFilters';
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { ApiResponse } from '@shared/contracts';
@@ -43,7 +45,7 @@ export function useAnalytics() {
     const defaultFrom = Number.isFinite(end) ? new Date(end - 29 * 86400000).toISOString().slice(0, 10) : daysAgo(30);
     return { from: text(route.query.from, defaultFrom), to };
   });
-  const q = computed(() => text(route.query.q));
+  const q = computed(() => searchTerm(text(route.query.q)));
   const sort = computed(() => text(route.query.sort, '-actions'));
   const activity = computed(() => text(route.query.activity, 'all'));
   const page = computed(() => positive(route.query.page));
@@ -56,7 +58,7 @@ export function useAnalytics() {
   const community = resource<CommunityAnalytics>();
   const members = resource<AnalyticsMembers>();
   const detail = resource<MemberAnalytics>();
-  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  const applyFilters = useQueryFilters();
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   function update(changes: Record<string, string | number | undefined>, replace = true) {
@@ -77,7 +79,7 @@ export function useAnalytics() {
     }
     if (rangeDraft.to > today) { rangeError.value = 'Дата окончания не может быть в будущем.'; return; }
     if ((end - start) / 86400000 + 1 > 366) { rangeError.value = 'Выберите период не более 366 дней.'; return; }
-    void update({ ...rangeDraft, page: undefined, activityPage: undefined }, false);
+    applyFilters({ ...rangeDraft, page: undefined, activityPage: undefined }, 'push');
   }
   function quickRange(days: number) { Object.assign(rangeDraft, { from: daysAgo(days), to: today }); applyRange(); }
   const memberParams = computed(() => ({ ...range.value, q: q.value, sort: sort.value, activity: activity.value, page: page.value, limit: limit.value }));
@@ -93,24 +95,20 @@ export function useAnalytics() {
   watch(() => `${range.value.from}|${range.value.to}`, () => { Object.assign(rangeDraft, range.value); rangeError.value = ''; void loadCommunity(); }, { immediate: true });
   watch(() => JSON.stringify(memberParams.value), () => { void loadMembers(); }, { immediate: true });
   watch(() => `${selected.value}|${JSON.stringify(detailParams.value)}`, () => { detail.clear(); void loadDetail(); }, { immediate: true });
-  watch(q, value => { if (searchTimer) clearTimeout(searchTimer); search.value = value; });
-  watch(search, value => {
-    if (searchTimer) clearTimeout(searchTimer);
-    if (value === q.value) return;
-    searchTimer = setTimeout(() => { void update({ q: value.trim(), page: undefined }); }, 300);
-  });
+  watch(q, value => { if (searchTerm(search.value) !== value) search.value = value; });
+  watch(search, value => { applyFilters({ q: searchTerm(value) || undefined, page: undefined }); });
   useRealtime(message => {
     if (message.type !== 'invalidate') return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(refresh, 350);
   });
-  onScopeDispose(() => { if (searchTimer) clearTimeout(searchTimer); if (refreshTimer) clearTimeout(refreshTimer); });
+  onScopeDispose(() => { if (refreshTimer) clearTimeout(refreshTimer); });
 
   return {
     community, members, detail, today, range, rangeDraft, rangeError, search, sort, activity, page, limit, selected,
     applyRange, quickRange, refresh, loadCommunity, loadMembers, loadDetail,
-    setSort: (value: string) => update({ sort: value, page: undefined }),
-    setActivity: (value: string) => update({ activity: value, page: undefined }),
+    setSort: (value: string) => applyFilters({ sort: value, page: undefined }),
+    setActivity: (value: string) => applyFilters({ activity: value, page: undefined }),
     setPage: (value: number) => update({ page: value === 1 ? undefined : value }, false),
     openMember: (id: string) => update({ member: id, activityPage: undefined }, false),
     closeMember: () => update({ member: undefined, activityPage: undefined }),

@@ -6,11 +6,13 @@ import { communityService } from '@/services/community';
 import { errorMessage } from '@/services/api';
 import { useRealtime } from './useRealtime';
 
+import { searchTerm, useFilterDelay } from './useFilterDelay';
+
 export interface ListFilters { q: string; sort: string; status: string; category: string; tag: string; city: string }
 const keys = ['q', 'sort', 'status', 'category', 'tag', 'city'] as const;
-export function parseFilters(query: LocationQuery): ListFilters {
+export function parseFilters(query: LocationQuery, defaultSort = '-createdAt'): ListFilters {
   const text = (key: string, fallback = '') => typeof query[key] === 'string' ? query[key] as string : fallback;
-  return { q: text('q'), sort: text('sort', '-createdAt'), status: text('status'), category: text('category'), tag: text('tag'), city: text('city') };
+  return { q: searchTerm(text('q')), sort: text('sort', defaultSort), status: text('status'), category: text('category'), tag: text('tag'), city: text('city') };
 }
 export function parsePage(value: unknown): number {
   const number = Number(value);
@@ -20,14 +22,16 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
   const route = useRoute();
   const router = useRouter();
   const limit = computed(() => toValue(resource) === 'teams' ? 30 : toValue(options.limit) ?? 12);
-  const filters = reactive<ListFilters>(parseFilters(route.query));
+  const defaultSort = computed(() => toValue(resource) === 'teams' ? 'name' : '-createdAt');
+  const currentFilters = () => parseFilters(route.query, defaultSort.value);
+  const filters = reactive<ListFilters>(currentFilters());
   const items = shallowRef<(UserModel | CommunityEntity)[]>([]);
   const meta = ref<ListMeta>({ page: 1, pages: 1, limit:limit.value, total: 0 });
   const loading = ref(false);
   const error = ref('');
   const page = computed(() => parsePage(route.query.page));
   let abort: AbortController | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const delay = useFilterDelay();
   let requestId = 0;
   let disposed = false;
   async function refresh(): Promise<void> {
@@ -37,7 +41,7 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
     loading.value = true;
     error.value = '';
     try {
-      const result = await communityService.list(toValue(resource), { ...parseFilters(route.query), page: page.value, limit:limit.value, view:'cards' }, abort.signal);
+      const result = await communityService.list(toValue(resource), { ...currentFilters(), page: page.value, limit:limit.value, view:'cards' }, abort.signal);
       if (disposed || current !== requestId) return;
       items.value = result.data;
       meta.value = result.meta;
@@ -50,30 +54,31 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
   function setPage(value: number): Promise<unknown> {
     return router.replace({ query: { ...route.query, page: value > 1 ? String(value) : undefined } });
   }
-  watch(() => ({ ...filters }), (next, previous) => {
-    const original = parseFilters(route.query);
-    if (keys.every(key => next[key] === original[key])) return;
-    if (timer) clearTimeout(timer);
-    const synchronize = () => {
+  watch(() => ({ ...filters }), next => {
+    delay.cancel();
+    const original = currentFilters();
+    const values = { ...next, q: searchTerm(next.q) };
+    if (keys.every(key => values[key] === original[key])) return;
+    delay.schedule(() => {
       const query = { ...route.query };
       for (const key of keys) {
-        if (filters[key] && !(key === 'sort' && filters[key] === '-createdAt')) query[key] = filters[key];
+        if (values[key] && !(key === 'sort' && values[key] === defaultSort.value)) query[key] = values[key];
         else delete query[key];
       }
       delete query.page;
       void router.replace({ query });
-    };
-    if (next.q !== previous.q) timer = setTimeout(synchronize, 280);
-    else synchronize();
+    });
   });
-  watch([() => toValue(resource), () => route.query], () => {
-    if (timer) clearTimeout(timer);
-    Object.assign(filters, parseFilters(route.query));
+  watch([() => toValue(resource), () => route.query], ([kind], previous) => {
+    delay.cancel();
+    const next = currentFilters();
+    if (previous?.[0] === kind && next.q === searchTerm(filters.q)) next.q = filters.q;
+    Object.assign(filters, next);
     void refresh();
   }, { immediate: true });
   useRealtime(message => {
     if (message.type === 'invalidate' && [toValue(resource), '*'].includes(message.resource)) void refresh();
   });
-  onScopeDispose(() => { disposed = true; abort?.abort(); if (timer) clearTimeout(timer); });
+  onScopeDispose(() => { disposed = true; abort?.abort(); });
   return { items, meta, loading, error, filters, page, refresh, setPage };
 }

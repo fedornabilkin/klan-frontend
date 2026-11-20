@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { searchTerm, useFilterDelay } from '@/composables/useFilterDelay';
+import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NButton, NFormItem, NSelect, type SelectInst, type SelectOption } from 'naive-ui';
 import type { Location } from '@shared/contracts';
@@ -25,7 +27,7 @@ const customCityName = computed(() => {
   return name;
 });
 let controller: AbortController | undefined;
-let timer: ReturnType<typeof setTimeout> | undefined;
+const cityDelay = useFilterDelay();
 let disposed = false;
 const selectedCountry = computed(() => findLocationCountry(props.modelValue.country, countries.value));
 const countryValue = computed(() => selectedCountry.value?.code ?? (props.modelValue.country ? 'saved-country' : null));
@@ -65,7 +67,7 @@ async function loadCities() {
   if (!code) { citiesLoading.value = false; return; }
   citiesLoading.value = true;
   try {
-    const result = await locationCatalog.cities(code, query.value, request.signal);
+    const result = await locationCatalog.cities(code, searchTerm(query.value), request.signal);
     if (!disposed && !request.signal.aborted) cities.value = result;
   } catch (error) { if (!disposed && !request.signal.aborted) cityError.value = errorMessage(error); }
   finally { if (!disposed && !request.signal.aborted) citiesLoading.value = false; }
@@ -96,17 +98,21 @@ function useCustomCity() {
   cityMenuOpen.value = false;
   citySelect.value?.blur();
 }
-watch(() => selectedCountry.value?.code, () => { query.value = ''; void loadCities(); });
-watch(query, () => { clearTimeout(timer); controller?.abort(); timer = setTimeout(() => { void loadCities(); }, 220); });
+watch(() => selectedCountry.value?.code, () => { query.value = ''; });
+watch([() => selectedCountry.value?.code, () => searchTerm(query.value)], () => {
+  controller?.abort();
+  cities.value = [];
+  cityDelay.schedule(() => { void loadCities(); });
+});
 onMounted(() => { void loadCountries(); });
-onBeforeUnmount(() => { disposed = true; controller?.abort(); clearTimeout(timer); });
+onBeforeUnmount(() => { disposed = true; controller?.abort(); });
 </script>
 
 <template lang="pug">
 .country-city-editor
   .location-fields
     NFormItem(label="Страна")
-      NSelect(:value="countryValue" :options="countryOptions" :filter="filterCountry" filterable clearable :loading="countriesLoading" :disabled="disabled" placeholder="Найдите страну" aria-label="Страна" @update:value="changeCountry")
+      SearchSelect(:value="countryValue" :options="countryOptions" :filter="filterCountry" clearable :loading="countriesLoading" :disabled="disabled" placeholder="Найдите страну" aria-label="Страна" @update:value="changeCountry")
     NFormItem(label="Город")
       .city-control
         NSelect(ref="citySelect" :show="cityMenuOpen" :value="cityValue" :options="cityOptions" filterable remote clearable :loading="citiesLoading" :disabled="disabled || !modelValue.country.trim()" :input-props="{maxlength:100}" placeholder="Найдите или введите город" aria-label="Город" @search="query = $event" @update:value="changeCity" @update:show="cityMenuOpen = $event")

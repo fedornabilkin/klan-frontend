@@ -23,7 +23,7 @@ function toggle(id: string) {
     <div class="tag-filter-controls">
       <div class="map-search">
         <Icon name="magnifying-glass" />
-        <input v-model="query" placeholder="Найти участника" aria-label="Поиск участников по имени, городу или интересам" />
+        <input v-model="query" placeholder="Найти участника (от 3 символов)" aria-label="Поиск участников по имени, городу или интересам" />
         <button v-if="query" type="button" class="icon-button" aria-label="Очистить поиск" @click="query = ''"><Icon name="xmark" /></button>
       </div>
       <CommunityTagSelect v-model="selected" :tags="tags" :loading="loading" />

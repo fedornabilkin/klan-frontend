@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import type { UserIdentity } from '@shared/contracts';
 import { userPath } from '@shared/user-links';
+import { displayProfileName } from '@/domain/profile-identity';
 import Avatar from './Avatar.vue';
 import Icon from './Icon.vue';
 
@@ -11,7 +12,7 @@ const props = withDefaults(defineProps<{
   size?: 'sm' | 'md' | 'lg';
   embedded?: boolean;
 }>(), { size: 'sm' });
-const name = computed(() => [props.user.firstName, props.user.lastName].filter(Boolean).join(' ') || props.user.name);
+const name = computed(() => displayProfileName(props.user));
 </script>
 
 <template>

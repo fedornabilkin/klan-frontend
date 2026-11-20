@@ -140,7 +140,9 @@ function buildParticipation(value: unknown, person: (value: unknown) => User, te
   const dto = object(value, 'participant');
   const target = dto.target == null ? undefined : number(dto.target, 'participant.target');
   if (target !== undefined && target < 0) throw new InvalidDtoError('participant.target');
-  return { user: person(dto.user), team: team(dto.team), items: array(dto.items, buildItem, 'participant.items'), target };
+  const teamRole = dto.teamRole;
+  if (teamRole != null && teamRole !== 'captain' && teamRole !== 'deputy' && teamRole !== 'member') throw new InvalidDtoError('participant.teamRole');
+  return { user: person(dto.user), ...(teamRole && { teamRole }), team: team(dto.team), items: array(dto.items, buildItem, 'participant.items'), target };
 }
 function buildResult(value: unknown, person: (value: unknown) => User, team: typeof buildTeam): ChallengeResult {
   const dto = object(value, 'result');
@@ -159,6 +161,7 @@ function buildPendingResult(value: unknown, person: (value: unknown) => User, te
 export class CommunityEntity implements Entity {
   id!: string; type!: Entity['type']; title!: string; description!: string; status!: string; category!: string;
   tags!: Tag[]; createdAt!: string; location?: Location; schedule?: Entity['schedule']; cover?: string;
+  teamChallenges?: Entity['teamChallenges'];
   challengeTeams?: NonNullable<Participation['team']>[];
   participants!: Participation[]; author?: User; motto?: string; content?: string; goal?: Entity['goal'];
   results?: ChallengeResult[]; pendingResults?: ChallengePendingResult[]; readers?: User[]; capacity?: number;
@@ -203,6 +206,11 @@ export class EntityBuilder {
       schedule: schedule ? { start: string(schedule.start, 'schedule.start'), end: string(schedule.end, 'schedule.end') } : undefined,
       cover: dto.cover == null ? undefined : string(dto.cover, 'entity.cover'),
       challengeTeams: type === 'challenges' ? teams.filter((t): t is NonNullable<typeof t> => !!t) : undefined,
+      teamChallenges: dto.teamChallenges == null ? undefined : array(dto.teamChallenges, value => {
+        const row = object(value, 'teamChallenge');
+        return { id: string(row.id, 'challenge.id'), publicId: publicId(row.publicId, 'challenge.publicId'), title: string(row.title, 'challenge.title'),
+          score: number(row.score, 'challenge.score'), target: row.target == null ? null : number(row.target, 'challenge.target'), unit: string(row.unit, 'challenge.unit') };
+      }, 'teamChallenges'),
       participants: array(dto.participants, value => buildParticipation(value, person, team), 'participants'),
       author: dto.author == null ? undefined : person(dto.author),
       motto: dto.motto == null ? undefined : string(dto.motto, 'motto'), content: dto.content == null ? undefined : string(dto.content, 'content'),

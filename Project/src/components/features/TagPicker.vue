@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { searchTerm, useDebouncedValue } from '@/composables/useFilterDelay';
 import { computed, onMounted, ref } from 'vue';
 import { NButton, NInput } from 'naive-ui';
 import type { ApiResponse, Tag } from '@shared/contracts';
@@ -7,7 +8,8 @@ import Icon from '@/components/ui/Icon.vue';
 const props = defineProps<{ modelValue: Tag[] }>();
 const emit = defineEmits<{ 'update:modelValue': [tags: Tag[]] }>();
 const query = ref(''); const available = ref<Tag[]>([]); const busy = ref(false); const error = ref('');
-const suggestions = computed(() => available.value.filter(t => !props.modelValue.some(s => s.id === t.id) && t.name.toLocaleLowerCase('ru').includes(query.value.trim().toLocaleLowerCase('ru'))).slice(0, 8));
+const term = useDebouncedValue(() => searchTerm(query.value).toLocaleLowerCase('ru'));
+const suggestions = computed(() => available.value.filter(t => !props.modelValue.some(s => s.id === t.id) && t.name.toLocaleLowerCase('ru').includes(term.value)).slice(0, 8));
 const canCreate = computed(() => props.modelValue.length < 30 && query.value.trim().length > 1 && !available.value.some(t => t.name.toLocaleLowerCase('ru') === query.value.trim().toLocaleLowerCase('ru')));
 function select(tag: Tag) { if(props.modelValue.length>=30){error.value='Можно выбрать не более 30 тегов.';return;} error.value='';emit('update:modelValue', [...props.modelValue, tag]); query.value=''; }
 async function create() { if(!canCreate.value || busy.value) return; busy.value=true; error.value=''; try { const result=await api.post<ApiResponse<Tag>>('/tags',{name:query.value.trim()}); available.value.push(result.data); select(result.data); } catch(e) {error.value=e instanceof Error?e.message:'Не удалось создать тег';} finally{busy.value=false;} }

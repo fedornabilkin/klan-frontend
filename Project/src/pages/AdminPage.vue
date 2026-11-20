@@ -17,6 +17,8 @@ import ConfirmDeleteModal from '@/components/features/ConfirmDeleteModal.vue'
 
 const route = useRoute()
 const router = useRouter()
+import { useFilterDelay } from '@/composables/useFilterDelay'
+const resourceDelay = useFilterDelay()
 const auth = useAuthStore()
 const resourceOptions: { label: string; value: Resource }[] = [
   { label: 'Участники', value: 'users' }, { label: 'Мероприятия', value: 'events' }, { label: 'Команды', value: 'teams' },
@@ -32,7 +34,7 @@ const editorOpen = ref(false)
 const deleteOpen = ref(false)
 const titleOf = (entity: Entity | User) => 'name' in entity ? entity.name : entity.title
 const descriptionOf = (entity: Entity | User) => 'bio' in entity ? entity.location.city : entity.description
-function changeResource(value: unknown) { if (typeof value === 'string' && resources.value.some(item => item.value === value)) router.replace({ query: { resource: value } }) }
+function changeResource(value: unknown) { if (typeof value === 'string' && resources.value.some(item => item.value === value)) resourceDelay.schedule(() => { void router.replace({ query: { resource: value } }) }) }
 let editRequest = 0
 async function edit(entity: Entity | User | null) {
   if (resource.value === 'users' && !entity) return
@@ -56,7 +58,7 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
       RouterLink(v-if="auth.can('analytics.read')" to="/admin/analytics") Аналитика сообщества и участников
     .admin-toolbar
       NSelect.admin-resource(:value="resource" :options="resources" aria-label="Тип записей" @update:value="changeResource")
-      NInput.admin-search(v-model:value="filters.q" placeholder="Найти запись…" clearable aria-label="Поиск записей")
+      NInput.admin-search(v-model:value="filters.q" placeholder="Найти запись (от 3 символов)" clearable aria-label="Поиск записей")
         template(#prefix)
           Icon(name="search")
       NSelect.admin-sort(v-model:value="filters.sort" :options="[{ label: 'Сначала новые', value: '-createdAt' }, { label: 'По названию', value: 'name' }, { label: 'По названию: Я–А', value: '-name' }]" aria-label="Сортировка")

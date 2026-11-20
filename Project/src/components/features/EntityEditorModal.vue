@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
 import type { ApiResponse, Entity, ProfileEntry, Resource, Tag, User } from '@shared/contracts'
@@ -153,7 +154,7 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
       NFormItem(label="Подробный текст")
         NInput(v-model:value="form.content" type="textarea" :rows="5" :maxlength="20000")
     NFormItem(label="Теги")
-      NSelect(v-model:value="form.tagIds" :options="tagOptions" multiple filterable placeholder="Выберите теги сообщества")
+      SearchSelect(v-model:value="form.tagIds" :options="tagOptions" multiple placeholder="Выберите теги сообщества")
     template(v-if="hasLocation")
       .editor-columns
         NFormItem(label="Город")

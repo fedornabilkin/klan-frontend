@@ -14,6 +14,8 @@ import type { MapPoint } from '@/domain/mapMarkers'
 import CommunityTagFilter from '@/components/features/CommunityTagFilter.vue'
 import { useCommunityTags } from '@/composables/useCommunityTags'
 
+import { searchTerm, useFilterDelay } from '@/composables/useFilterDelay'
+const filterDelay = useFilterDelay()
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
@@ -31,7 +33,6 @@ const activityPages = ref(1)
 const activityError = ref('')
 const activityLoading = ref(false)
 let mapController: AbortController | undefined
-let debounce: ReturnType<typeof setTimeout> | undefined
 let unsubscribe: (() => void) | undefined
 let disposed = false
 const matchingCount = computed(() => points.value.reduce((sum, point) => sum + point.count, 0))
@@ -60,7 +61,7 @@ async function loadMap() {
   const controller = mapController
   mapLoading.value = true
   try {
-    const result = await api.get<ApiResponse<MapPoint[]>>('/geography', {q:q.value,tag:selectedTags.value.join(',')}, controller.signal)
+    const result = await api.get<ApiResponse<MapPoint[]>>('/geography', {q:searchTerm(String(route.query.q || '')),tag:String(route.query.tag || '')}, controller.signal)
     if (!controller.signal.aborted && !disposed) { points.value = result.data; geographyError.value = '' }
   } catch (error) { if (!controller.signal.aborted && !disposed) geographyError.value = errorMessage(error) }
   finally { if (!controller.signal.aborted && !disposed) mapLoading.value = false }
@@ -78,16 +79,17 @@ async function loadActivity(more = false) {
   finally { if (!disposed) activityLoading.value = false }
 }
 watch([q,selectedTags], () => {
-  clearTimeout(debounce)
-  debounce = setTimeout(() => {
-    void router.replace({query: {...route.query, q:q.value || undefined,tag:selectedTags.value.join(',') || undefined}})
-    void loadMap()
-  },250)
+  filterDelay.cancel()
+  const text = searchTerm(q.value), tags = selectedTags.value.join(',')
+  if (text === searchTerm(String(route.query.q || '')) && tags === String(route.query.tag || '')) return
+  filterDelay.schedule(() => { void router.replace({query:{...route.query, q:text || undefined, tag:tags || undefined}}) })
 }, {deep:true})
-watch(() => [route.query.q, route.query.tag], () => {
-  const nextQ = String(route.query.q || ''), nextTags = String(route.query.tag || '')
-  if (q.value !== nextQ) q.value = nextQ
+watch([() => route.query.q, () => route.query.tag], () => {
+  filterDelay.cancel()
+  const nextQ = searchTerm(String(route.query.q || '')), nextTags = String(route.query.tag || '')
+  if (searchTerm(q.value) !== nextQ) q.value = nextQ
   if (selectedTags.value.join(',') !== nextTags) selectedTags.value = nextTags.split(',').filter(Boolean)
+  void loadMap()
 })
 onMounted(() => {
   void loadDashboard(); void loadMap()
@@ -96,7 +98,7 @@ onMounted(() => {
     else { if (message.resource === 'dashboard' || message.resource === '*') void loadDashboard(); if (message.resource === 'users' || message.resource === '*') void loadMap() }
   })
 })
-onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce); mapController?.abort() })
+onBeforeUnmount(() => { disposed = true; unsubscribe?.(); mapController?.abort() })
 </script>
 
 <template lang="pug">

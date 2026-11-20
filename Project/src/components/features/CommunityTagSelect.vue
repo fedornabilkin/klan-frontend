@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed } from 'vue';
-import { NSelect } from 'naive-ui';
 import { normalizeTagQuery, type RankedTag } from '@/domain/tagPopularity';
 
 const props = defineProps<{ tags: RankedTag[]; loading?: boolean }>();
@@ -11,10 +11,10 @@ const options = computed(() => props.tags.map(tag => ({
 </script>
 
 <template>
-  <NSelect :value="selected" @update:value="selected = $event ?? []" class="tag-search-select" :options="options" :loading="loading"
+  <SearchSelect :value="selected" @update:value="selected = $event ?? []" class="tag-search-select" :options="options" :loading="loading"
     :filter="(pattern, option) => String(option.search).includes(normalizeTagQuery(pattern))"
-    multiple filterable clearable max-tag-count="responsive"
+    multiple clearable max-tag-count="responsive"
     placeholder="Выбрать теги" aria-label="Поиск и выбор тегов">
     <template #empty>Подходящих тегов нет</template>
-  </NSelect>
+  </SearchSelect>
 </template>

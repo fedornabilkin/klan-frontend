@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useDebouncedValue } from '@/composables/useFilterDelay';
+import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, h, ref, useId, watch } from 'vue';
-import { NButton, NSelect } from 'naive-ui';
+import { NButton } from 'naive-ui';
 import type { Entity, User } from '@shared/contracts';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import { filterChallengeResults, filterPendingChallengeResults, paginateChallengeResults, resultDateLabel, SOLO_RESULT_TEAM } from '@/domain/challengeResults';
@@ -38,12 +40,13 @@ const teamOptions = computed(() => {
   }
   return [...teams].map(([value, label]) => ({ value, label })).sort((left, right) => left.label.localeCompare(right.label, 'ru'));
 });
-const filtered = computed(() => filterChallengeResults(results.value, { userId: userId.value, teamId: teamId.value, from: from.value, to: to.value }));
+const applied = useDebouncedValue(() => ({ userId: userId.value, teamId: teamId.value, from: from.value, to: to.value }));
+const filtered = computed(() => filterChallengeResults(results.value, applied.value));
 const selected = computed(() => paginateChallengeResults(filtered.value, page.value));
-const pendingFiltered = computed(() => filterPendingChallengeResults(pending.value, { userId: userId.value, teamId: teamId.value }));
+const pendingFiltered = computed(() => filterPendingChallengeResults(pending.value, applied.value));
 const pendingSelected = computed(() => paginateChallengeResults(pendingFiltered.value, pendingPage.value));
-watch([userId, teamId, from, to], () => { page.value = 1; });
-watch([userId, teamId], () => { pendingPage.value = 1; });
+watch(applied, () => { page.value = 1; });
+watch([() => applied.value.userId, () => applied.value.teamId], () => { pendingPage.value = 1; });
 watch(() => selected.value.page, value => { if (page.value !== value) page.value = value; });
 watch(() => pendingSelected.value.page, value => { if (pendingPage.value !== value) pendingPage.value = value; });
 watch(() => props.entity.id, reset);
@@ -63,11 +66,11 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
     <div class="daily-filters">
       <div class="daily-field">
         <label :id="`${sectionId}-person-label`">Участник</label>
-        <NSelect v-model:value="userId" :options="userOptions" :render-label="renderPerson" filterable clearable placeholder="Все участники" :input-props="{ 'aria-label': 'Участник результатов' }" :aria-labelledby="`${sectionId}-person-label`" />
+        <SearchSelect v-model:value="userId" :options="userOptions" :render-label="renderPerson" clearable placeholder="Все участники" :input-props="{ 'aria-label': 'Участник результатов' }" :aria-labelledby="`${sectionId}-person-label`" />
       </div>
       <div class="daily-field">
         <label :id="`${sectionId}-team-label`">Команда в челлендже</label>
-        <NSelect v-model:value="teamId" :options="teamOptions" filterable clearable placeholder="Все команды" :input-props="{ 'aria-label': 'Команда результатов' }" :aria-labelledby="`${sectionId}-team-label`" />
+        <SearchSelect v-model:value="teamId" :options="teamOptions" clearable placeholder="Все команды" :input-props="{ 'aria-label': 'Команда результатов' }" :aria-labelledby="`${sectionId}-team-label`" />
       </div>
       <div class="daily-dates">
         <div class="daily-field">

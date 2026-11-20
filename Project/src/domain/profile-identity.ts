@@ -2,6 +2,10 @@ import type { User } from '@shared/contracts';
 import { isCalendarDate } from '@shared/profile-entries';
 import { formatProfileName, latestProfileDate, normalizeTelegramUsername } from '@shared/profile-identity';
 
+export function displayProfileName(user: Pick<User, 'firstName' | 'lastName' | 'name'>): string {
+  return [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name;
+}
+
 export interface IdentityDraft {
   firstName: string;
   lastName: string;

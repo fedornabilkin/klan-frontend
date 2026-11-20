@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { searchTerm, useDebouncedValue } from '@/composables/useFilterDelay';
 import { computed, ref, watch } from 'vue';
 import { NButton, NInput, NPopover, NSpin } from 'naive-ui';
 import type { ApiResponse, Tag, User } from '@shared/contracts';
@@ -12,11 +13,12 @@ const emit = defineEmits<{ saved: [user: User] }>();
 const showPicker = ref(false); const query = ref(''); const catalog = ref<Tag[]>([]);
 const loading = ref(false); const busy = ref(false); const error = ref(''); const catalogError = ref('');
 const name = computed(() => normalizeTagName(query.value));
+const term = useDebouncedValue(() => tagNameKey(searchTerm(query.value)));
 const searchKey = computed(() => tagNameKey(query.value));
 const selectedKeys = computed(() => new Set(props.user.tags.map(tag => tagNameKey(tag.name))));
 const exactTag = computed(() => catalog.value.find(tag => tagNameKey(tag.name) === searchKey.value));
 const alreadySelected = computed(() => !!searchKey.value && selectedKeys.value.has(searchKey.value));
-const options = computed(() => catalog.value.filter(tag => !selectedKeys.value.has(tagNameKey(tag.name)) && tagNameKey(tag.name).includes(searchKey.value)));
+const options = computed(() => catalog.value.filter(tag => !selectedKeys.value.has(tagNameKey(tag.name)) && tagNameKey(tag.name).includes(term.value)));
 const nameError = computed(() => name.value && !exactTag.value && !alreadySelected.value ? newTagNameError(name.value) : undefined);
 const canCreate = computed(() => !!name.value && !loading.value && !catalogError.value && !exactTag.value && !alreadySelected.value && !nameError.value);
 watch(() => props.user.id, () => { showPicker.value = false; query.value = ''; error.value = ''; });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue';
-import { NButton,NInput,NModal,NSelect } from 'naive-ui';
+import { NButton,NInput,NModal } from 'naive-ui';
 import type { ApiResponse,Entity,Item } from '@shared/contracts';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
@@ -17,7 +18,7 @@ async function save(){if(selected.value.some(i=>!Number.isInteger(i.quantity)||(
 <template lang="pug">
 NModal(:show="show" preset="card" title="Что я возьму с собой" :style="{width:'34rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
   p.modal-intro Ваш список увидят участники мероприятия. Так проще распределить общее снаряжение.
-  NSelect(v-model:value="selectedId" filterable :options="options" placeholder="Выбрать из общего списка" @update:value="add")
+  SearchSelect(v-model:value="selectedId" :options="options" placeholder="Выбрать из общего списка" @update:value="add")
   .equipment-list
     .equipment-row(v-for="(item,index) in selected" :key="item.id")
       span {{ item.name }}

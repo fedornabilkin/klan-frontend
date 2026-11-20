@@ -16,12 +16,15 @@ import Icon from '@/components/ui/Icon.vue';
 import CatalogEntryModal from '@/components/features/CatalogEntryModal.vue';
 import CatalogDeleteModal from '@/components/features/CatalogDeleteModal.vue';
 
+import { searchTerm } from '@/composables/useFilterDelay';
+import { useQueryFilters } from '@/composables/useQueryFilters';
+const applyFilters = useQueryFilters();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const canManage = computed(() => auth.isAdmin || Boolean((auth.user as User | null)?.access?.capabilities.includes('catalog.manage')));
 const kind = computed<CatalogKind>(() => route.query.catalog === 'items' ? 'items' : 'tags');
-const query = computed(() => typeof route.query.q === 'string' ? route.query.q.slice(0, 200) : '');
+const query = computed(() => typeof route.query.q === 'string' ? searchTerm(route.query.q.slice(0, 200)) : '');
 const sortOptions = [
   { label: 'Название: А–Я', value: 'name' }, { label: 'Название: Я–А', value: '-name' },
   { label: 'Чаще используются', value: '-usage' }, { label: 'Реже используются', value: 'usage' },
@@ -38,15 +41,14 @@ const selected = ref<CatalogEntryModel | null>(null);
 const editorOpen = ref(false);
 const deleteOpen = ref(false);
 let controller: AbortController | undefined;
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let realtimeTimer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
 
 function updateQuery(changes: Record<string, string | undefined>): void {
   void router.replace({ query: { ...route.query, ...changes } });
 }
-function changeCatalog(value: CatalogKind): void { updateQuery({ catalog: value === 'tags' ? undefined : value, page: undefined, q: undefined }); }
-function changeSort(value: CatalogSort): void { updateQuery({ sort: value === 'name' ? undefined : value, page: undefined }); }
+function changeCatalog(value: CatalogKind): void { applyFilters({ catalog: value === 'tags' ? undefined : value, page: undefined, q: undefined }); }
+function changeSort(value: CatalogSort): void { applyFilters({ sort: value === 'name' ? undefined : value, page: undefined }); }
 function changePage(value: number): void { updateQuery({ page: value === 1 ? undefined : String(value) }); }
 function edit(entry: CatalogEntryModel | null): void { selected.value = entry; editorOpen.value = true; }
 function remove(entry: CatalogEntryModel): void { if (entry.canDelete) { selected.value = entry; deleteOpen.value = true; } }
@@ -70,14 +72,9 @@ async function refresh(): Promise<void> {
   } catch (cause) { if (!signal.aborted && !disposed) error.value = errorMessage(cause); }
   finally { if (!signal.aborted && !disposed) loading.value = false; }
 }
-watch(query, value => { if (search.value !== value) search.value = value; });
-watch(search, value => {
-  if (searchTimer) clearTimeout(searchTimer);
-  if (value === query.value) return;
-  searchTimer = setTimeout(() => { updateQuery({ q: value.trim() || undefined, page: undefined }); }, 250);
-});
+watch(query, value => { if (searchTerm(search.value) !== value) search.value = value; });
+watch(search, value => { applyFilters({ q: searchTerm(value) || undefined, page: undefined }); });
 watch(kind, () => {
-  if (searchTimer) clearTimeout(searchTimer);
   search.value = query.value;
   selected.value = null; editorOpen.value = false; deleteOpen.value = false;
 });
@@ -87,7 +84,7 @@ useRealtime(message => {
     realtimeTimer = setTimeout(() => { realtimeTimer = undefined; void refresh(); }, 80);
   }
 });
-onBeforeUnmount(() => { disposed = true; controller?.abort(); if (searchTimer) clearTimeout(searchTimer); if (realtimeTimer) clearTimeout(realtimeTimer); });
+onBeforeUnmount(() => { disposed = true; controller?.abort(); if (realtimeTimer) clearTimeout(realtimeTimer); });
 </script>
 
 <template lang="pug">
@@ -118,7 +115,7 @@ onBeforeUnmount(() => { disposed = true; controller?.abort(); if (searchTimer) c
         strong {{ summary.unused }}
         span Без связей
     .catalog-toolbar
-      NInput(v-model:value="search" placeholder="Поиск по названию…" aria-label="Поиск в справочнике" clearable :maxlength="200")
+      NInput(v-model:value="search" placeholder="Поиск по названию (от 3 символов)" aria-label="Поиск в справочнике" clearable :maxlength="200")
         template(#prefix)
           Icon(name="search")
       NSelect.catalog-sort(:value="sort" :options="sortOptions" aria-label="Сортировка справочника" @update:value="changeSort")

@@ -195,7 +195,7 @@ const activityOptions = [
         h2#members-heading Участники подробно
         p Действия учитываются за период, участие и профиль — по текущим данным.
     .members-toolbar
-      NInput(v-model:value="search" placeholder="Имя, город или страна…" clearable aria-label="Поиск участников в аналитике")
+      NInput(v-model:value="search" placeholder="Имя, город или страна (от 3 символов)" clearable aria-label="Поиск участников в аналитике")
         template(#prefix)
           Icon(name="search")
       NSelect(:value="activity" :options="activityOptions" aria-label="Фильтр активности участников" @update:value="analytics.setActivity")

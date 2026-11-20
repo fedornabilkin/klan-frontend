@@ -25,7 +25,7 @@ const sortOptions = computed(() => [{ label: 'Сначала новые', value:
 const statuses = computed(() => resource.value === 'feedback' ? [{label:'Все статусы',value:''},{label:'Новые',value:'open'},{label:'В работе',value:'in_progress'},{label:'Решённые',value:'resolved'},{label:'Закрытые',value:'closed'}] : resource.value === 'teams' ? [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Архив',value:'archived'}] : [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Скоро',value:'upcoming'},{label:'Завершённые',value:'completed'},{label:'Архив',value:'archived'}]);
 const selectedTags = computed({ get: () => (filters.tag || '').split(',').filter(Boolean), set: (value: string[]) => { filters.tag = value.join(','); } });
 function toggleTag(id: string) { filters.tag = selectedTags.value.includes(id) ? selectedTags.value.filter(t=>t!==id).join(',') : [...selectedTags.value,id].join(','); }
-function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filters.category=''; filters.city=''; filters.sort='-createdAt'; }
+function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filters.category=''; filters.city=''; filters.sort=resource.value === 'teams' ? 'name' : '-createdAt'; }
 </script>
 
 <template lang="pug">
@@ -42,7 +42,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
     .collection-count(v-else) {{ pagination.total }} в сообществе
   CommunityTagFilter.member-tag-filter(v-if="resource === 'users'" v-model="selectedTags" v-model:query="filters.q" :tags="tags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
   .list-toolbar(v-else)
-    NInput.list-search(v-model:value="filters.q" clearable placeholder="Поиск по названию и описанию…" aria-label="Поиск")
+    NInput.list-search(v-model:value="filters.q" clearable placeholder="Поиск от 3 символов…" aria-label="Поиск")
       template(#prefix)
         Icon(name="magnifying-glass")
     NSelect.list-select(v-model:value="filters.sort" :options="sortOptions" aria-label="Сортировка")

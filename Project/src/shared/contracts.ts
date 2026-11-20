@@ -21,7 +21,11 @@ export interface User {
   stats: { events: number; challenges: number; books: number }; joinedAt: string;
 }
 export interface Item { id: string; name: string; quantity?: number }
-export interface Participation { user: User; team?: { id: string; publicId?: number; title: string }; items?: Item[]; target?: number }
+export type TeamRole = 'captain' | 'deputy' | 'member';
+export interface TeamChallengeSummary {
+  id: string; publicId?: number; title: string; score: number; target: number | null; unit: string;
+}
+export interface Participation { user: User; teamRole?: TeamRole; team?: { id: string; publicId?: number; title: string }; items?: Item[]; target?: number }
 export interface ChallengeResult { user: User; date: string; value: number; team?: { id: string; publicId?: number; title: string } }
 /** Imported values without a confirmed date are excluded from all result totals. */
 export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
@@ -32,6 +36,7 @@ export interface Entity {
   location?: Location; schedule?: { start: string; end: string }; cover?: string;
   participants: Participation[]; author?: User; motto?: string; content?: string;
   goal?: { target: number; unit: string; scope?: 'participant' }; results?: ChallengeResult[];
+  teamChallenges?: TeamChallengeSummary[];
   /** Visible team directory included with compact challenge details. */
   challengeTeams?: NonNullable<Participation['team']>[];
   pendingResults?: ChallengePendingResult[];
