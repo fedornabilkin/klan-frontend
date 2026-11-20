@@ -1,6 +1,8 @@
+import type { UserIdentity } from '@shared/contracts';
+
 export interface MapPoint {
   id: string; city: string; country: string; lat: number; lng: number; count: number;
-  users: { id: string; publicId?: number; name: string; initials: string; color: string }[];
+  users: UserIdentity[];
 }
 type Position = [number, number];
 interface ProjectedCity { point: MapPoint; position: Position }

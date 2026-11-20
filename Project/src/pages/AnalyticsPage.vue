@@ -5,7 +5,7 @@ import { useAnalytics } from '@/composables/useAnalytics';
 import PageHeader from '@/components/ui/PageHeader.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import Pagination from '@/components/ui/Pagination.vue';
-import Avatar from '@/components/ui/Avatar.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
 import AnalyticsBars from '@/components/features/AnalyticsBars.vue';
 import AnalyticsMemberModal from '@/components/features/AnalyticsMemberModal.vue';
@@ -209,10 +209,8 @@ const activityOptions = [
       .member-cards(v-if="members.data.length")
         article.member-card(v-for="member in members.data" :key="member.user.id")
           .member-name
-            Avatar(:user="member.user")
-            div
-              button.member-open(type="button" @click="analytics.openMember(member.user.id)") {{ member.user.name }}
-              p {{ [member.user.location.city,member.user.location.country].filter(Boolean).join(', ') || 'География не указана' }}
+            UserAvatar(:user="member.user")
+              small {{ [member.user.location.city,member.user.location.country].filter(Boolean).join(', ') || 'География не указана' }}
           dl.member-numbers
             div
               dt Действий / дней за период

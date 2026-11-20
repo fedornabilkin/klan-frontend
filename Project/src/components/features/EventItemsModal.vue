@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { NButton,NInput,NInputNumber,NModal,NSelect } from 'naive-ui';
+import { NButton,NInput,NModal,NSelect } from 'naive-ui';
 import type { ApiResponse,Entity,Item } from '@shared/contracts';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
+import NumberField from '@/components/ui/NumberField.vue';
 import Icon from '@/components/ui/Icon.vue';
 const props=defineProps<{show:boolean;entity:Entity}>();const emit=defineEmits<{'update:show':[value:boolean];saved:[]}>();
-const auth=useAuthStore();const catalog=ref<Item[]>([]);const selected=ref<Item[]>([]);const newName=ref('');const selectedId=ref<string|null>(null);const error=ref('');const busy=ref(false);
+const auth=useAuthStore();const catalog=ref<Item[]>([]);const selected=ref<(Omit<Item, 'quantity'> & {quantity?:number|null})[]>([]);const newName=ref('');const selectedId=ref<string|null>(null);const error=ref('');const busy=ref(false);
 const options=computed(()=>catalog.value.filter(i=>!selected.value.some(s=>s.id===i.id)).map(i=>({label:i.name,value:i.id})));
 watch(()=>props.show,async(show)=>{if(!show)return;error.value='';selected.value=(props.entity.participants.find(p=>p.user.id===auth.user?.id)?.items||[]).map(i=>({...i,quantity:i.quantity??1}));try{catalog.value=(await api.get<ApiResponse<Item[]>>('/items')).data;}catch(e){error.value=e instanceof Error?e.message:'Не удалось загрузить вещи';}});
 function add(id:string|null){const item=catalog.value.find(i=>i.id===id);if(item&&!selected.value.some(i=>i.id===id))selected.value.push({...item,quantity:1});selectedId.value=null;}
 async function create(){if(newName.value.trim().length<2)return;busy.value=true;error.value='';try{const item=(await api.post<ApiResponse<Item>>('/items',{name:newName.value.trim()})).data;if(!catalog.value.some(i=>i.id===item.id))catalog.value.push(item);add(item.id);newName.value='';}catch(e){error.value=e instanceof Error?e.message:'Не удалось добавить предмет';}finally{busy.value=false;}}
-async function save(){if(selected.value.some(i=>!Number.isInteger(i.quantity)||(i.quantity??0)<1)){error.value='Укажите количество каждого предмета: целое число от 1 до 999.';return;}busy.value=true;error.value='';try{await api.put(`/events/${props.entity.id}/items`,{items:selected.value});emit('saved');emit('update:show',false);}catch(e){error.value=e instanceof Error?e.message:'Не удалось сохранить список';}finally{busy.value=false;}}
+async function save(){if(selected.value.some(i=>!Number.isInteger(i.quantity)||(i.quantity??0)<1||(i.quantity??0)>999)){error.value='Укажите количество каждого предмета: целое число от 1 до 999.';return;}busy.value=true;error.value='';try{await api.put(`/events/${props.entity.id}/items`,{items:selected.value});emit('saved');emit('update:show',false);}catch(e){error.value=e instanceof Error?e.message:'Не удалось сохранить список';}finally{busy.value=false;}}
 </script>
 <template lang="pug">
 NModal(:show="show" preset="card" title="Что я возьму с собой" :style="{width:'34rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
@@ -20,7 +21,7 @@ NModal(:show="show" preset="card" title="Что я возьму с собой" :
   .equipment-list
     .equipment-row(v-for="(item,index) in selected" :key="item.id")
       span {{ item.name }}
-      NInputNumber(v-model:value="item.quantity" :min="1" :max="999" :precision="0" size="small")
+      NumberField(v-model="item.quantity" min="1" max="999" :aria-label="`Количество: ${item.name}`")
       NButton(quaternary circle :aria-label="`Убрать ${item.name}`" @click="selected.splice(index,1)")
         template(#icon)
           Icon(name="xmark")

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { challengeStandings } from '@/domain/challengeStandings';
-import { userPath } from '@shared/user-links';
-import Avatar from '@/components/ui/Avatar.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 
 const props = defineProps<{
@@ -42,10 +41,7 @@ section.detail-panel(aria-labelledby="personal-standings-title")
   .row(v-for="(row,i) in visiblePeople" :key="row.user.id" :class="{own:row.user.id===currentUser}")
     span.place {{ (personPage-1)*pageSize+i+1 }}
     .identity.person
-      Avatar(:user="row.user" size="sm")
-      div
-        RouterLink(:to="userPath(row.user)") {{ row.user.name }}
-        small {{ row.team?.title || 'Соло' }}
+      UserAvatar(:user="row.user")
     .score
       strong {{ format(row.score) }} {{ unit }}
       small Цель: {{ format(personalGoal) }}
@@ -67,5 +63,5 @@ section.detail-panel(aria-labelledby="personal-standings-title")
 small { display:block }
 .score { text-align:right; flex-shrink:0 }
 .score strong { font-size:.94rem }
-@media(max-width:32rem) { .person :deep(.avatar) { display:none } .row {gap:.5rem} .score {max-width:42%} }
+@media(max-width:32rem) { .row {gap:.5rem} .score {max-width:42%} }
 </style>

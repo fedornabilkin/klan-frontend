@@ -11,6 +11,7 @@ export interface User {
   id: string; name: string; username?: string; role: 'admin' | 'member';
   firstName?: string; lastName?: string; middleName?: string; birthDate?: string | null;
   callsign?: string;
+  hasActiveTeam?: boolean;
   activeTeams?: ProfileTeamSummary[];
   publicId?: number;
   access?: AccessSummary;
@@ -35,7 +36,8 @@ export interface Entity {
   pendingResults?: ChallengePendingResult[];
   readers?: User[]; capacity?: number;
 }
-export interface Activity { id: string; actor: Pick<User, 'id'|'publicId'|'name'|'initials'|'color'|'role'>; action: string; target?: { title: string; path: string }; createdAt: string }
+export type UserIdentity = Pick<User, 'id' | 'publicId' | 'name' | 'firstName' | 'lastName' | 'callsign' | 'initials' | 'color' | 'hasActiveTeam'>;
+export interface Activity { id: string; actor: UserIdentity & Pick<User, 'role'>; action: string; target?: { title: string; path: string; user?: UserIdentity }; createdAt: string }
 export interface ListMeta { page: number; limit: number; total: number; pages: number }
 export interface ListResponse<T> { data: T[]; meta: ListMeta }
 export interface ApiResponse<T> { data: T }

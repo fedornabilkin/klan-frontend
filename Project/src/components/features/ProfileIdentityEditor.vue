@@ -5,6 +5,7 @@ import type { ApiResponse, User } from '@shared/contracts';
 import { normalizeTelegramUsername } from '@shared/profile-identity';
 import { identityDraft, identityPatch, identitySavedFields, localCalendarDate, type IdentityDraft, type IdentitySavedField } from '@/domain/profile-identity';
 import { api, errorMessage } from '@/services/api';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
 
 const props = defineProps<{ user: User; editable: boolean }>();
@@ -68,7 +69,7 @@ async function save() {
 <template>
   <div ref="element" class="profile-identity">
     <div class="identity-heading">
-      <h1>{{ user.name }}</h1>
+      <h1><UserAvatar :user="user" size="lg" /></h1>
       <NButton v-if="editable && !editing" class="identity-edit" quaternary size="small" @click="start">
         <template #icon><Icon name="pen" /></template>Изменить данные
       </NButton>
@@ -113,12 +114,6 @@ async function save() {
       </div>
     </form>
     <template v-else>
-      <div v-if="user.callsign || user.activeTeams?.length" class="identity-affiliation">
-        <span v-if="user.callsign" class="identity-callsign"><span>Позывной</span> <strong>{{ user.callsign }}</strong></span>
-        <RouterLink v-for="team in user.activeTeams || []" :key="team.id" class="identity-team" :to="`/teams/${team.publicId ?? team.id}`">
-          <Icon name="shield-halved" />{{ team.title }}
-        </RouterLink>
-      </div>
       <div v-if="telegramUsername || birthDateLabel" class="identity-contact">
         <a v-if="telegramUsername" :href="`https://t.me/${telegramUsername}`" target="_blank" rel="noopener noreferrer"><Icon name="telegram" />@{{ telegramUsername }}</a>
         <span v-if="birthDateLabel" class="identity-birthday"><Icon name="calendar" /><span>Дата рождения: <time :datetime="user.birthDate || undefined">{{ birthDateLabel }}</time></span></span>

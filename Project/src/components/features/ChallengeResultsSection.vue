@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, h, ref, useId, watch } from 'vue';
 import { NButton, NSelect } from 'naive-ui';
-import type { Entity } from '@shared/contracts';
-import { userPath } from '@shared/user-links';
+import type { Entity, User } from '@shared/contracts';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import { filterChallengeResults, filterPendingChallengeResults, paginateChallengeResults, resultDateLabel, SOLO_RESULT_TEAM } from '@/domain/challengeResults';
 import Pagination from '@/components/ui/Pagination.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -25,10 +25,12 @@ const userOptions = computed(() => {
   const users = new Map(props.entity.participants.map(participant => [participant.user.id, participant.user]));
   for (const result of [...results.value, ...pending.value]) if (!users.has(result.user.id)) users.set(result.user.id, result.user);
   return [...users.values()].sort((left, right) => left.name.localeCompare(right.name, 'ru')).map(user => ({
-    value: user.id,
+    user, value: user.id,
     label: [user.name, user.callsign, user.username ? `@${user.username}` : ''].filter(Boolean).join(' · '),
   }));
 });
+const renderPerson = (option: { user?: unknown; label?: unknown }) => option.user
+  ? h(UserAvatar, { user: option.user as User, embedded: true }) : String(option.label ?? '');
 const teamOptions = computed(() => {
   const teams = new Map<string, string>();
   for (const row of [...props.entity.participants, ...results.value, ...pending.value]) {
@@ -61,7 +63,7 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
     <div class="daily-filters">
       <div class="daily-field">
         <label :id="`${sectionId}-person-label`">Участник</label>
-        <NSelect v-model:value="userId" :options="userOptions" filterable clearable placeholder="Все участники" :input-props="{ 'aria-label': 'Участник результатов' }" :aria-labelledby="`${sectionId}-person-label`" />
+        <NSelect v-model:value="userId" :options="userOptions" :render-label="renderPerson" filterable clearable placeholder="Все участники" :input-props="{ 'aria-label': 'Участник результатов' }" :aria-labelledby="`${sectionId}-person-label`" />
       </div>
       <div class="daily-field">
         <label :id="`${sectionId}-team-label`">Команда в челлендже</label>
@@ -89,7 +91,7 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
         <tbody>
           <tr v-for="(result, index) in selected.rows" :key="`${result.user.id}:${result.date}:${selected.first + index}`">
             <td class="daily-date"><time :datetime="result.date">{{ resultDateLabel(result.date) }}</time></td>
-            <td><RouterLink :to="userPath(result.user)">{{ result.user.name }}</RouterLink></td>
+            <td><UserAvatar :user="result.user" /></td>
             <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.publicId ?? result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
             <td class="daily-value">{{ result.value.toLocaleString('ru-RU') }}</td>
           </tr>
@@ -114,7 +116,7 @@ function reset() { userId.value = null; teamId.value = null; from.value = ''; to
           <tbody>
             <tr v-for="(result, index) in pendingSelected.rows" :key="`${result.user.id}:${result.sourceCell}:${pendingSelected.first + index}`">
               <td class="pending-source"><strong>{{ result.sourceCell }}</strong><small>{{ result.reason }}</small></td>
-              <td><RouterLink :to="userPath(result.user)">{{ result.user.name }}</RouterLink></td>
+              <td><UserAvatar :user="result.user" /></td>
               <td><RouterLink v-if="result.team" :to="`/teams/${encodeURIComponent(result.team.publicId ?? result.team.id)}`">{{ result.team.title }}</RouterLink><span v-else>Соло</span></td>
               <td class="daily-value">{{ result.value.toLocaleString('ru-RU') }}</td>
             </tr>

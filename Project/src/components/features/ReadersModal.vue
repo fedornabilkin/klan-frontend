@@ -1,18 +1,14 @@
 <script setup lang="ts">
 import { NModal } from 'naive-ui';
-import { userPath } from '@shared/user-links';
 import type { User } from '@shared/contracts';
-import Avatar from '@/components/ui/Avatar.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 defineProps<{show:boolean;readers:User[]}>();const emit=defineEmits<{'update:show':[value:boolean]}>();
 </script>
 <template lang="pug">
 NModal(:show="show" preset="card" title="Уже прочитали" :style="{width:'29rem',maxWidth:'calc(100vw - 2rem)'}" @update:show="emit('update:show',$event)")
   .reader-list
-    RouterLink.reader(v-for="user in readers" :key="user.id" :to="userPath(user)" @click="emit('update:show',false)")
-      Avatar(:user="user")
-      div
-        strong {{ user.name }}
-        small {{ user.location.city }}
+    UserAvatar.reader(v-for="user in readers" :key="user.id" :user="user" @click="emit('update:show',false)")
+      small(v-if="user.location.city") {{ user.location.city }}
     p(v-if="!readers.length") Станьте первым, кто прочитает эту книгу.
 </template>
 <style scoped>

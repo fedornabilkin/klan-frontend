@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed,ref,watch } from 'vue';
-import { NButton,NForm,NFormItem,NInputNumber,NModal } from 'naive-ui';
+import { NButton,NForm,NFormItem,NModal } from 'naive-ui';
 import type { Entity } from '@shared/contracts';
+import NumberField from '@/components/ui/NumberField.vue';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 const props=defineProps<{show:boolean;entity:Entity}>();const emit=defineEmits<{'update:show':[value:boolean];saved:[]}>();const auth=useAuthStore();
@@ -17,7 +18,7 @@ NModal(:show="show" preset="card" title="Мой результат" :style="{wid
     NFormItem(label="За какую дату")
       input.result-date(v-model="date" type="date" :min="minimum" :max="maximum" required)
     NFormItem(:label="`Результат · ${entity.goal?.unit || 'ед.'}`")
-      NInputNumber(v-model:value="value" :min="0" :max="entity.category === 'attendance' ? 1 : 1000000" :precision="entity.category === 'attendance' ? 0 : 2" style="width:100%")
+      NumberField(v-model="value" required aria-label="Результат" :min="0" :max="entity.category === 'attendance' ? 1 : 1000000" :step="entity.category === 'distance' ? 0.01 : 1")
     p.modal-intro(v-if="entity.category === 'attendance'") 1 — был на мероприятии, 0 — не участвовал.
     p.modal-intro Можно изменить результат за прошедший день до завершения челленджа. Новое значение заменит предыдущее за эту дату.
     p.modal-error(v-if="error" role="alert") {{ error }}

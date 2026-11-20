@@ -1,9 +1,9 @@
-import type { Activity, ListMeta, User } from './contracts.js';
+import type { Activity, ListMeta, User, UserIdentity } from './contracts.js';
 
 export interface AnalyticsRange { from: string; to: string; days: number; timezone: 'UTC' }
 export interface AnalyticsCount { name: string; count: number }
 export interface AnalyticsMember {
-  user: Pick<User, 'id' | 'publicId' | 'name' | 'initials' | 'color' | 'role' | 'joinedAt' | 'location'>;
+  user: UserIdentity & Pick<User, 'role' | 'joinedAt' | 'location'>;
   period: { actions: number; activeDays: number; resultEntries: number };
   lastRecordedActivity: string | null;
   profileCompleteness: number;

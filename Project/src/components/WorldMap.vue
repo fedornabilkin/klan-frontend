@@ -7,8 +7,7 @@ import type { FeatureCollection, Geometry } from 'geojson'
 import worldData from 'world-atlas/countries-110m.json'
 import { RouterLink } from 'vue-router'
 import Icon from '@/components/ui/Icon.vue'
-import Avatar from '@/components/ui/Avatar.vue'
-import { userPath } from '@shared/user-links'
+import UserAvatar from '@/components/ui/UserAvatar.vue'
 
 import { mapMarkers, type MapMarker, type MapPoint } from '@/domain/mapMarkers'
 const props = defineProps<{ points: MapPoint[]; loading?: boolean }>()
@@ -120,10 +119,7 @@ function activateMarker(marker: MapMarker) {
         span {{ active.country }} · {{ active.count }} участников
       button.icon-button(aria-label="Закрыть город" @click="activeId = ''")
         Icon(name="xmark")
-    RouterLink.popup-user(v-for="user in active.users" :key="user.id" :to="userPath(user)")
-      Avatar(:user="user" size="sm")
-      span {{ user.name }}
-      Icon(name="arrow-up-right-from-square")
+    UserAvatar.popup-user(v-for="user in active.users" :key="user.id" :user="user")
     RouterLink.popup-all(:to="{path: '/users', query: {city: active.city}}") Все участники в городе →
   .map-popup(v-else-if="clusterCities.length")
     .popup-heading

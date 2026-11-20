@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UserAvatar from "@/components/ui/UserAvatar.vue"
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NInput, NSelect, NSkeleton } from 'naive-ui'
@@ -74,7 +75,8 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
       template(v-else-if="rows.length")
         .admin-row(v-for="entity in rows" :key="entity.id")
           .admin-row-main
-            RouterLink.admin-title(:to="`/${resource}/${entity.publicId ?? entity.id}`") {{ titleOf(entity) }}
+            UserAvatar(v-if="'name' in entity" :user="entity")
+            RouterLink.admin-title(v-else :to="`/${resource}/${entity.publicId ?? entity.id}`") {{ titleOf(entity) }}
             p {{ descriptionOf(entity) || 'Описание не добавлено' }}
           StatusBadge(v-if="'status' in entity" :status="entity.status")
           span.admin-role(v-else) {{ entity.access?.level === 'moderator' ? 'Модератор' : entity.role === 'admin' ? 'Администратор' : 'Участник' }}
@@ -88,7 +90,7 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
       EmptyState(v-else title="Записей пока нет" :description="resource === 'users' ? 'Участники появляются после первого входа через Telegram. Попробуйте изменить условия поиска.' : 'Создайте первую запись или измените условия поиска.'" icon="layers")
     Pagination(v-if="!error && meta.pages > 1" :page="page" :pages="meta.pages" @change="setPage")
     EntityEditorModal(v-model:show="editorOpen" :resource="resource" :entity="selected" @saved="refresh")
-    ConfirmDeleteModal(v-if="selected" v-model:show="deleteOpen" :resource="resource" :id="selected.id" :title="titleOf(selected)" @deleted="refresh")
+    ConfirmDeleteModal(v-if="selected" v-model:show="deleteOpen" :resource="resource" :id="selected.id" :user="'name' in selected ? selected : undefined" :title="titleOf(selected)" @deleted="refresh")
 </template>
 
 <style scoped>

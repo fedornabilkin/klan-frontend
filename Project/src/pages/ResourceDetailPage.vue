@@ -9,7 +9,7 @@ import { communityService } from '@/services/community';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtime } from '@/composables/useRealtime';
-import Avatar from '@/components/ui/Avatar.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import ProfileTextEditor from '@/components/features/ProfileTextEditor.vue';
@@ -107,7 +107,6 @@ onBeforeUnmount(()=>controller?.abort());
       .banner-lines
       span KLAN / ЛЮДИ С ХАРАКТЕРОМ
     .profile-heading
-      Avatar(:user="user" size="lg")
       .profile-title
         .profile-eyebrow
           span УЧАСТНИК СООБЩЕСТВА
@@ -154,7 +153,7 @@ onBeforeUnmount(()=>controller?.abort());
           p Сохраните профиль или перенесите информацию из JSON.
           RouterLink(to="/profile/import") Импорт и экспорт
   template(v-else-if="record")
-    .entity-cover(:class="`entity-cover--${resource}`")
+    .entity-cover(v-if="resource !== 'challenges'" :class="`entity-cover--${resource}`")
       .cover-grid
       Icon(:name="resourceMeta[resource].icon")
       .cover-meta
@@ -164,6 +163,7 @@ onBeforeUnmount(()=>controller?.abort());
       .entity-title
         .profile-eyebrow {{ resourceMeta[resource].singular.toUpperCase() }} / KLAN
         h1 {{ entity.title }}
+        StatusBadge(v-if="resource === 'challenges'" :status="entity.status")
         p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
       NButton(v-if="canEdit" secondary @click="showEditor = true")
         template(#icon)
@@ -173,7 +173,11 @@ onBeforeUnmount(()=>controller?.abort());
     .detail-columns
       .detail-main
         section.detail-panel
-          h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
+          .details-heading
+            h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
+            span.challenge-participation(v-if="resource === 'challenges' && participant" :title="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
+              Icon(name="circle-check")
+              | Участвую
           p.prose {{ entity.description }}
           p.prose(v-if="entity.content") {{ entity.content }}
           .profile-tags(v-if="entity.tags.length")
@@ -197,11 +201,8 @@ onBeforeUnmount(()=>controller?.abort());
             span {{ entity.participants.length }}{{ entity.capacity ? ` / ${entity.capacity}` : '' }}
           .participant-list
             .participant-row(v-for="part in entity.participants" :key="part.user.id")
-              RouterLink.participant-person(:to="userPath(part.user)")
-                Avatar(:user="part.user" size="sm")
-                div
-                  strong {{ part.user.name }}
-                  small {{ part.user.location.city }}
+              UserAvatar.participant-person(:user="part.user")
+                small(v-if="part.user.location.city") {{ part.user.location.city }}
               .participant-items(v-if="part.items?.length")
                 span(v-for="item in part.items" :key="item.id") {{ item.name }} × {{ item.quantity || 1 }}
             p.empty-inline(v-if="!entity.participants.length") Здесь пока никого. Присоединяйтесь первым.
@@ -228,7 +229,7 @@ onBeforeUnmount(()=>controller?.abort());
             div
               small Вместе с вами
               strong {{ entity.participants.length }} участников
-          .participation-notice(v-if="participant")
+          .participation-notice(v-if="participant && resource !== 'challenges'")
             Icon(name="circle-check")
             | {{ participant.team ? `Вы участвуете за ${participant.team.title}` : 'Вы участвуете' }}
           NButton(v-if="!participant && !ended" type="primary" block :loading="busy" @click="join") {{ resource === 'teams' ? 'Вступить в команду' : resource === 'challenges' ? 'Принять вызов' : 'Я пойду' }}
@@ -242,7 +243,10 @@ onBeforeUnmount(()=>controller?.abort());
             | Записать результат
           p.join-hint(v-if="participant && resource === 'challenges' && !ended && !started") Запись результатов откроется {{ dateLabel(entity.schedule?.start) }}.
           p.closed-notice(v-if="ended") {{ resource === 'teams' ? 'Команда в архиве' : 'Участие завершено' }}
-          NButton.leave-button(v-if="participant && !ended" quaternary block :loading="busy" @click="leave") {{ resource === 'teams' ? 'Покинуть команду' : 'Отменить участие' }}
+          NButton.leave-button(v-if="participant && !ended" :type="resource === 'challenges' ? 'error' : 'default'" :secondary="resource === 'challenges'" :quaternary="resource !== 'challenges'" block :loading="busy" @click="leave")
+            template(v-if="resource === 'challenges'" #icon)
+              Icon(name="right-from-bracket")
+            | {{ resource === 'teams' ? 'Покинуть команду' : 'Отменить участие' }}
           p.join-hint(v-if="resource === 'teams' && !participant && !ended") Одновременно можно состоять только в одной активной команде.
         section.detail-panel.personal-score(v-if="resource === 'challenges' && participant")
           span МОЙ РЕЗУЛЬТАТ
@@ -263,11 +267,8 @@ onBeforeUnmount(()=>controller?.abort());
             | {{ hasRead ? 'Прочитано · убрать отметку' : 'Я прочитал эту книгу' }}
         section.detail-panel(v-if="entity.author")
           h2 {{ resource === 'feedback' ? 'Автор предложения' : 'Организатор / автор' }}
-          RouterLink.author-link(:to="userPath(entity.author)")
-            Avatar(:user="entity.author" size="sm")
-            div
-              strong {{ entity.author.name }}
-              small(v-if="entity.author.role === 'admin'") Администратор
+          UserAvatar.author-link(:user="entity.author")
+            small(v-if="entity.author.role === 'admin'") Администратор
         section.detail-panel.detail-note
           Icon(name="shield-halved")
           p Только для участников KLAN. Берегите доверие и личную информацию друг друга.
@@ -280,6 +281,10 @@ onBeforeUnmount(()=>controller?.abort());
 </template>
 
 <style scoped>
+.details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}
+.detail-panel .details-heading h2{margin:0}
+.challenge-participation{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .5rem;border-radius:1rem;background:#233328;color:#b4d8b8;font-size:.69rem;white-space:nowrap}
+
 .profile-team-list{display:flex;flex-direction:column;gap:1rem}.profile-team-card+.profile-team-card{border-top:1px solid #ffffff0a;padding-top:1rem}.profile-team-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap}.profile-team-heading>a{color:#e7b78f;text-decoration:none;font-weight:600;font-size:.95rem;overflow-wrap:anywhere}.profile-team-heading>a:hover{color:#ffd0ab;text-decoration:underline}.profile-team-heading>a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem;border-radius:.2rem}.profile-team-heading>span{font-size:.72rem;color:#aa998b;white-space:nowrap}.profile-team-card>p{font-size:.82rem;color:#b4aca6;line-height:1.8;margin:.6rem 0 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}.profile-teams .profile-team-empty{color:#93877e;font-size:.8rem;line-height:1.7;margin:0}.profile-team-card>.profile-team-empty{margin-top:.5rem}
 .detail-refresh-error{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #755d33;background:#2b251b;border-radius:.6rem;padding:.8rem;margin-bottom:1rem;color:#dcc391;font-size:.78rem}.detail-refresh-error>span{min-width:0;overflow-wrap:anywhere}
 .profile-title{min-width:0}.profile-eyebrow{flex-wrap:wrap}.profile-id{font-variant-numeric:tabular-nums;color:#9f948c;white-space:nowrap}@media(max-width:45rem){.detail-columns--profile>.detail-side{grid-row:auto}}

@@ -8,6 +8,7 @@ import { userPath } from '@shared/user-links'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import UserAvatar from '@/components/ui/UserAvatar.vue'
 import Icon from '@/components/ui/Icon.vue'
 
 const auth = useAuthStore()
@@ -89,6 +90,12 @@ function parseProfile(text: string): ImportProfile {
   }
 }
 const preview = computed(() => { if (!json.value.trim()) return null; try { return { data: parseProfile(json.value), error: '' } } catch(e) { return { data: null, error: e instanceof SyntaxError ? 'JSON содержит синтаксическую ошибку. Проверьте кавычки и запятые.' : e instanceof Error ? e.message : 'Не удалось прочитать JSON.' } } })
+const previewUser = computed(() => {
+  const profile = preview.value?.data;
+  if (!auth.user || !profile) return null;
+  return { ...auth.user, name:profile.name, firstName:profile.firstName, lastName:profile.lastName,
+    callsign:profile.callsign, initials:profile.name.split(/\s+/).slice(0,2).map(word => word[0]).join('').toUpperCase() };
+});
 function download(value: unknown, name: string) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' }))
   const link = document.createElement('a'); link.href = url; link.download = name; link.click()
@@ -161,7 +168,7 @@ async function importProfile() {
       NAlert(v-if="preview?.error" type="warning" :show-icon="false") {{ preview.error }}
       .import-preview(v-if="preview?.data")
         span.preview-label ПРЕДПРОСМОТР
-        strong {{ preview.data.name }}
+        UserAvatar(v-if="previewUser" :user="previewUser")
         span {{ [preview.data.location.city, preview.data.location.country].filter(Boolean).join(', ') || 'География не указана' }}
         p {{ preview.data.facts.length }} фактов · {{ preview.data.achievements.length }} достижений · {{ preview.data.interests.length }} интересов · {{ preview.data.tags.length }} тегов
       NAlert(v-if="error" type="error" :show-icon="false") {{ error }}

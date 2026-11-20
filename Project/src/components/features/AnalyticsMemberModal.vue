@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { NAlert, NButton, NModal, NSkeleton } from 'naive-ui';
-import { userPath } from '@shared/user-links';
 import type { MemberAnalytics } from '@shared/analytics';
-import Avatar from '@/components/ui/Avatar.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
@@ -25,11 +24,8 @@ NModal(:show="show" preset="card" title="Аналитика участника" 
       NSkeleton(height="16rem")
     template(v-else-if="value")
       .member-heading
-        Avatar(:user="value.member.user" size="lg")
-        div
-          h2 {{ value.member.user.name }}
-          p {{ [value.member.user.location.city, value.member.user.location.country].filter(Boolean).join(', ') || 'Место не указано' }}
-          RouterLink(:to="userPath(value.member.user)") Открыть профиль
+        UserAvatar(:user="value.member.user" size="lg")
+          small {{ [value.member.user.location.city, value.member.user.location.country].filter(Boolean).join(', ') || 'Место не указано' }}
       p.analytics-note Период: {{ value.range.from }} — {{ value.range.to }} включительно, UTC. Последнее записанное действие за всё доступное время: {{ dateTime(value.member.lastRecordedActivity) }}{{ value.member.lastRecordedActivity ? ' UTC' : '' }}.
       .member-metrics
         div
@@ -92,7 +88,8 @@ NModal(:show="show" preset="card" title="Аналитика участника" 
             time(:datetime="activity.createdAt") {{ dateTime(activity.createdAt) }} UTC
             p
               span {{ activity.action }}
-              RouterLink(v-if="safeTarget(activity.target?.path)" :to="safeTarget(activity.target?.path) || '/admin/analytics'") {{ activity.target?.title }}
+              UserAvatar(v-if="activity.target?.user" :user="activity.target.user")
+              RouterLink(v-else-if="safeTarget(activity.target?.path)" :to="safeTarget(activity.target?.path) || '/admin/analytics'") {{ activity.target?.title }}
               span(v-else-if="activity.target") {{ activity.target.title }}
         EmptyState(v-else title="Журнал за этот период пуст")
         Pagination(:page="value.activity.meta.page" :pages="value.activity.meta.pages" @change="emit('page',$event)")

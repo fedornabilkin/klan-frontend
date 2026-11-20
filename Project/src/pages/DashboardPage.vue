@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { userPath } from '@shared/user-links'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { Activity, ApiResponse, Dashboard, ListResponse } from '@shared/contracts'
 import { api, errorMessage } from '@/services/api'
@@ -8,7 +7,7 @@ import { communityService } from '@/services/community'
 import { subscribeRealtime } from '@/services/realtime'
 import { useAuthStore } from '@/stores/auth'
 import Icon from '@/components/ui/Icon.vue'
-import Avatar from '@/components/ui/Avatar.vue'
+import UserAvatar from '@/components/ui/UserAvatar.vue'
 import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import WorldMap from '@/components/WorldMap.vue'
 import type { MapPoint } from '@/domain/mapMarkers'
@@ -127,7 +126,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
             p Точка на карте — начало настоящего знакомства.
           span.map-badge НА СВЯЗИ
         .map-tools
-          CommunityTagFilter.map-tag-filter(v-model="selectedTags" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
+          CommunityTagFilter.map-tag-filter(:limit="4" :show-all="false" v-model="selectedTags" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
             template(#search)
               .map-search
                 Icon(name="magnifying-glass")
@@ -226,13 +225,12 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); clearTimeout(debounce)
           button.button.small(@click="loadActivity()") Повторить
         .activity-list(aria-label="Последние события" aria-live="polite")
           .activity-row(v-for="event in activity" :key="event.id")
-            Avatar(:user="event.actor" size="sm")
             .activity-copy
-              RouterLink(:to="userPath(event.actor)")
-                strong {{ event.actor.name }}
+              UserAvatar(:user="event.actor")
               span.admin-label(v-if="event.actor.role === 'admin'") АДМИН
               |  {{ event.action }}
-              RouterLink(v-if="event.target" :to="event.target.path")  {{ event.target.title }}
+              UserAvatar(v-if="event.target?.user && event.target.user.id !== event.actor.id" :user="event.target.user")
+              RouterLink(v-else-if="event.target && !event.target.user" :to="event.target.path")  {{ event.target.title }}
               time(:datetime="event.createdAt") {{ time(event.createdAt) }}
           p.empty-message(v-if="!activity.length && !activityLoading") Здесь появятся события сообщества.
         .activity-footer(v-if="activityPage < activityPages")

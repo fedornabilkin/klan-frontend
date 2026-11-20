@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { NModal, NButton, NAlert } from 'naive-ui'
-import type { Resource } from '@shared/contracts'
+import UserAvatar from '@/components/ui/UserAvatar.vue'
+import type { Resource, User } from '@shared/contracts'
 import { api } from '@/services/api'
-const props = defineProps<{ show: boolean; resource: Resource; id: string; title: string }>()
+const props = defineProps<{ show: boolean; resource: Resource; id: string; title: string; user?: User }>()
 const emit = defineEmits<{ 'update:show': [boolean]; deleted: [] }>()
 const busy = ref(false)
 const error = ref('')
@@ -17,7 +18,9 @@ async function remove() {
 </script>
 <template lang="pug">
 NModal(:show="show" preset="card" title="Удалить запись?" :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" :mask-closable="!busy" :closable="!busy" :close-on-esc="!busy" @update:show="emit('update:show', $event)")
-  p Запись «{{ title }}» будет удалена. Это действие нельзя отменить.
+  UserAvatar(v-if="user" :user="user")
+  p(v-if="user") Профиль будет удалён. Это действие нельзя отменить.
+  p(v-else) Запись «{{ title }}» будет удалена. Это действие нельзя отменить.
   NAlert(v-if="error" type="error") {{ error }}
   .delete-actions
     NButton(:disabled="busy" @click="emit('update:show', false)") Отмена

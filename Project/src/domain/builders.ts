@@ -83,7 +83,7 @@ function buildLocation(value: unknown): Location {
 
 export class UserModel implements User {
   id!: string; publicId?: number; name!: string; username?: string; callsign?: string; role!: User['role']; bio!: string;
-  firstName?: string; lastName?: string; middleName?: string; birthDate!: string | null; activeTeams!: ProfileTeamSummary[];
+  firstName?: string; lastName?: string; middleName?: string; birthDate!: string | null; activeTeams!: ProfileTeamSummary[]; hasActiveTeam?: boolean;
   location!: Location; tags!: Tag[]; initials!: string; color!: string;
   facts!: ProfileEntry[]; interests!: string[]; achievements!: ProfileEntry[];
   stats!: User['stats']; joinedAt!: string;
@@ -112,6 +112,7 @@ export class UserBuilder {
       firstName: dto.firstName == null ? undefined : string(dto.firstName, 'user.firstName'),
       lastName: dto.lastName == null ? undefined : string(dto.lastName, 'user.lastName'),
       middleName: dto.middleName == null ? undefined : string(dto.middleName, 'user.middleName'),
+      hasActiveTeam: typeof dto.hasActiveTeam === 'boolean' ? dto.hasActiveTeam : undefined,
       birthDate: birthDate(dto.birthDate), activeTeams: array(dto.activeTeams, buildProfileTeam, 'user.activeTeams'),
       bio: string(dto.bio, 'user.bio', ''), location: buildLocation(dto.location),
       tags: array(dto.tags, buildTag, 'user.tags'),
@@ -213,6 +214,16 @@ export class EntityBuilder {
 export function buildResource(resource: Resource, dto: unknown): UserModel | CommunityEntity {
   return resource === 'users' ? new UserBuilder().from(dto).build() : new EntityBuilder().from(dto).build();
 }
+function buildIdentity(dto: Record<string, unknown>) {
+  return {
+    id: string(dto.id, 'user.id'), publicId: publicId(dto.publicId, 'user.publicId'), name: string(dto.name, 'user.name'),
+    firstName: typeof dto.firstName === 'string' ? dto.firstName : undefined,
+    lastName: typeof dto.lastName === 'string' ? dto.lastName : undefined,
+    callsign: typeof dto.callsign === 'string' ? dto.callsign : undefined,
+    hasActiveTeam: dto.hasActiveTeam === true,
+    initials: string(dto.initials, 'user.initials'), color: string(dto.color, 'user.color'),
+  };
+}
 export function buildActivity(value: unknown): Activity {
   const dto = object(value, 'activity');
   const actor = object(dto.actor, 'activity.actor');
@@ -221,7 +232,8 @@ export function buildActivity(value: unknown): Activity {
   if (role !== 'member' && role !== 'admin') throw new InvalidDtoError('actor.role');
   return {
     id: string(dto.id, 'activity.id'), action: string(dto.action, 'activity.action'), createdAt: string(dto.createdAt, 'activity.createdAt'),
-    actor: { id: string(actor.id, 'actor.id'), publicId: publicId(actor.publicId, 'actor.publicId'), name: string(actor.name, 'actor.name'), initials: string(actor.initials, 'actor.initials'), color: string(actor.color, 'actor.color'), role },
-    target: target ? { title: string(target.title, 'target.title'), path: string(target.path, 'target.path') } : undefined,
+    actor: { ...buildIdentity(actor), role },
+    target: target ? { title: string(target.title, 'target.title'), path: string(target.path, 'target.path'),
+      user: target.user ? buildIdentity(object(target.user, 'target.user')) : undefined } : undefined,
   };
 }

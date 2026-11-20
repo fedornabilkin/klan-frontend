@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UserAvatar from "@/components/ui/UserAvatar.vue";
 import { computed, ref, watch } from 'vue';
 import { NButton, NInput } from 'naive-ui';
 import type { ApiResponse, User } from '@shared/contracts';
@@ -49,7 +50,7 @@ async function save() {
       </div>
     </form>
     <div v-else-if="isName" class="name-row">
-      <h1>{{ user.name }}</h1>
+      <h1><UserAvatar :user="user" /></h1>
       <NButton v-if="editable" quaternary circle aria-label="Изменить имя" @click="start"><template #icon><Icon name="pen" /></template></NButton>
     </div>
     <p v-else class="profile-bio"><ProfileLinkedText :text="user.bio || 'Участник пока не рассказал о себе.'" :telegram-username="user.username" /></p>

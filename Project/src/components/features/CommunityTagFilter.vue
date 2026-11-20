@@ -8,7 +8,8 @@ const props = withDefaults(defineProps<{
   loading?: boolean;
   error?: string;
   limit?: number;
-}>(), { limit: 8 });
+  showAll?: boolean;
+}>(), { limit: 8, showAll: true });
 const selected = defineModel<string[]>({ required: true });
 const emit = defineEmits<{ retry: [] }>();
 const popular = computed(() => props.tags.filter(tag => tag.count > 0).slice(0, props.limit));
@@ -28,7 +29,7 @@ function toggle(id: string) {
       <button v-if="selected.length" type="button" class="clear-tags" @click="selected = []">Сбросить теги</button>
     </div>
     <div class="popular-tags" aria-label="Популярные теги сообщества">
-      <button type="button" class="popular-tag" :class="{ selected: !selected.length }" :aria-pressed="!selected.length" @click="selected = []">Все участники</button>
+      <button v-if="showAll" type="button" class="popular-tag" :class="{ selected: !selected.length }" :aria-pressed="!selected.length" @click="selected = []">Все участники</button>
       <button v-for="tag in popular" :key="tag.id" type="button" class="popular-tag" :class="{ selected: selected.includes(tag.id) }" :aria-pressed="selected.includes(tag.id)" :title="`${tag.name}: ${tag.count} участников`" @click="toggle(tag.id)">
         <span>{{ tag.name }}</span><span class="tag-count">{{ tag.count }}</span>
       </button>

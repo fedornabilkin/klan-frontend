@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NModal, NInput, NSelect, NInputNumber, NButton, NAlert, NFormItem } from 'naive-ui'
+import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
 import type { ApiResponse, Entity, ProfileEntry, Resource, Tag, User } from '@shared/contracts'
 import { isCalendarDate, normalizeProfileEntries } from '@shared/profile-entries'
+import NumberField from '@/components/ui/NumberField.vue'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -17,6 +18,8 @@ const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Доб�
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
 const hasDates = computed(() => ['events', 'challenges'].includes(props.resource))
+const savedGoal = computed(() => props.entity && 'goal' in props.entity ? props.entity : undefined)
+const originalFraction = computed(() => savedGoal.value?.category === form.value.category && savedGoal.value.goal?.target === form.value.target && !Number.isInteger(form.value.target))
 const hasLocation = computed(() => ['users', 'events'].includes(props.resource))
 const tagOptions = computed(() => tags.value.map(tag => ({ label: tag.name, value: tag.id })))
 const statusOptions = computed(() => (props.resource === 'feedback'
@@ -101,8 +104,8 @@ async function save() {
   if (props.resource === 'challenges' && (typeof f.target !== 'number' || !Number.isFinite(f.target) || f.target <= 0 || f.target > 1e9 || !f.unit.trim())) {
     error.value = 'Укажите положительную числовую цель и единицу измерения.'; return
   }
-  if (props.resource === 'challenges' && f.category === 'attendance' && !Number.isInteger(f.target)) {
-    error.value = 'Количество посещений в цели должно быть целым числом.'; return
+  if (props.resource === 'challenges' && f.category !== 'distance' && !originalFraction.value && !Number.isInteger(f.target)) {
+    error.value = 'Укажите целое число для цели.'; return
   }
   const location = { city: f.city.trim(), country: f.country.trim(), lat: f.lat, lng: f.lng }
   const selectedTags = tags.value.filter(tag => f.tagIds.includes(tag.id))
@@ -156,9 +159,9 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
           NInput(v-model:value="form.country" :maxlength="100")
       .editor-columns
         NFormItem(label="Широта")
-          NInputNumber(v-model:value="form.lat" :min="-90" :max="90")
+          NumberField(v-model="form.lat" aria-label="Широта" min="-90" max="90" step="any")
         NFormItem(label="Долгота")
-          NInputNumber(v-model:value="form.lng" :min="-180" :max="180")
+          NumberField(v-model="form.lng" aria-label="Долгота" min="-180" max="180" step="any")
       p.editor-hint Координаты необязательны. Оставьте оба поля пустыми, если положение на карте неизвестно.
     .editor-columns(v-if="hasDates")
       NFormItem(label="Начало" required)
@@ -166,12 +169,12 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
       NFormItem(label="Окончание" required)
         input.date-field(v-model="form.end" type="datetime-local" required)
     NFormItem(v-if="resource === 'events'" label="Количество мест")
-      NInputNumber(v-model:value="form.capacity" :min="1" :max="100000")
+      NumberField(v-model="form.capacity" aria-label="Количество мест" required min="1" max="100000")
     NFormItem(v-if="resource === 'teams'" label="Девиз")
       NInput(v-model:value="form.motto")
     .editor-columns(v-if="resource === 'challenges'")
       NFormItem(label="Цель на одного участника" required)
-        NInputNumber(v-model:value="form.target" :min="0" :max="1e9")
+        NumberField(v-model="form.target" aria-label="Цель на одного участника" min="0" :max="1e9" required :step="form.category === 'distance' || originalFraction ? 'any' : 1")
       NFormItem(label="Единица измерения")
         NInput(v-model:value="form.unit" placeholder="раз / км / посещений")
     p.editor-hint(v-if="resource === 'challenges'") {{ form.category === 'attendance' ? 'Факт посещения: участник отмечает 0 или 1 за день. Укажите число посещений для одного участника за весь период.' : 'Укажите личную цель за весь период. Цели команды и челленджа рассчитываются по числу участников.' }}
