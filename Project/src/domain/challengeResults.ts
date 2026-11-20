@@ -1,13 +1,50 @@
-import type { Entity, User } from '@shared/contracts';
+import type { Entity, Participation, User } from '@shared/contracts';
 
 const monthLabel = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const names = new Intl.Collator('ru', { numeric: true });
 const dayMs = 86_400_000;
 
-export function challengeCalendar(entity: Pick<Entity, 'schedule' | 'participants' | 'results'>, today: string) {
+type ChallengeEntry = Pick<Participation, 'user' | 'team'>;
+
+export function challengeTeamOptions(entity: Pick<Entity, 'participants' | 'results' | 'pendingResults'>) {
+  const teams = new Map<string, string>();
+  let hasSolo = false;
+  for (const entries of [entity.participants, entity.results ?? [], entity.pendingResults ?? []]) {
+    for (const { team } of entries) {
+      if (team) teams.set(team.id, team.title);
+      else hasSolo = true;
+    }
+  }
+  const options = [...teams].map(([value, label]) => ({ value, label })).sort((a, b) => names.compare(a.label, b.label));
+  if (hasSolo) options.push({ value: '', label: 'Без команды' });
+  return options;
+}
+
+function fold(text: string) {
+  return text.normalize('NFKC').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+}
+
+export function challengeResultMatcher(teamId: string | null, query: string) {
+  const words = fold(query.trim()).split(/\s+/).filter(Boolean);
+  const people = new WeakMap<User, boolean>();
+  return ({ user, team }: ChallengeEntry) => {
+    if (teamId !== null && (team?.id ?? '') !== teamId) return false;
+    if (!words.length) return true;
+    const cached = people.get(user);
+    if (cached !== undefined) return cached;
+    const text = fold([user.name, user.firstName, user.lastName, user.callsign,
+      user.username && '@' + user.username.replace(/^@/, '')].filter(Boolean).join(' '));
+    const matches = words.every(word => text.includes(word));
+    people.set(user, matches);
+    return matches;
+  };
+}
+
+export function challengeCalendar(entity: Pick<Entity, 'schedule' | 'participants' | 'results'>, today: string,
+  matches: (row: ChallengeEntry) => boolean = () => true) {
   const rows = new Map<string, { user: User; values: Map<string, number> }>();
   const results = entity.results ?? [];
-  let first = '', last = '', total = 0;
+  let first = '', last = '', total = 0, count = 0;
   function includeDate(value?: string) {
     const date = value?.slice(0, 10);
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
@@ -24,9 +61,13 @@ export function challengeCalendar(entity: Pick<Entity, 'schedule' | 'participant
   }
   includeDate(entity.schedule?.start);
   includeDate(entity.schedule?.end);
-  for (const participant of entity.participants) rowFor(participant.user);
+  for (const participant of entity.participants) {
+    if (matches(participant)) rowFor(participant.user);
+  }
   for (const result of results) {
     includeDate(result.date);
+    if (!matches(result)) continue;
+    count++;
     const values = rowFor(result.user).values;
     values.set(result.date, (values.get(result.date) ?? 0) + result.value);
     total += result.value;
@@ -42,7 +83,7 @@ export function challengeCalendar(entity: Pick<Entity, 'schedule' | 'participant
     months[months.length - 1]!.count++;
     days.push(iso);
   }
-  return { days, months, total, count: results.length,
+  return { days, months, total, count,
     rows: [...rows.values()].sort((a, b) => names.compare(a.user.name, b.user.name) || a.user.id.localeCompare(b.user.id)) };
 }
 

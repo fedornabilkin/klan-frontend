@@ -1,7 +1,7 @@
 import { challengeStandings } from './challengeStandings';
 import { describe, expect, it } from 'vitest';
 import type { ChallengeResult, Entity, User } from '@shared/contracts';
-import { challengeCalendar, paginateChallengeResults } from './challengeResults';
+import { challengeCalendar, challengeTeamOptions, challengeResultMatcher, paginateChallengeResults } from './challengeResults';
 
 const user = (id: string, name = 'Иван Петров'): User => ({
   id, name, publicId: Number(id.slice(1)), role: 'member', bio: '', initials: 'ИП', color: '#abc',
@@ -29,6 +29,27 @@ describe('challenge calendar', () => {
     expect(matrix.rows[2]!.values.has('2026-10-01')).toBe(false);
     expect(matrix.rows[3]!.values.size).toBe(0);
     expect(matrix.total).toBe(60);
+  });
+  it('combines plain text and historical scoring team before counting and grouping by day', () => {
+    const person = { ...first, name: 'Фёдор Петров', callsign: 'Маяк', username: 'petrov_f' };
+    const participants = [{ user: person, team: south }, { user: third, team: south }];
+    const results = [{ user: person, team: north, date: '2026-01-30', value: 0 },
+      { user: person, team: south, date: '2026-02-01', value: 5 },
+      { user: person, date: '2026-02-02', value: 12 }];
+    const pending = { user: third, team: { id: 'old', title: 'Архив' }, value: 7, reason: '', sourceCell: 'A1' };
+    expect(challengeTeamOptions({ participants, results, pendingResults: [pending] }).map(t => t.value)).toEqual(['old','north','south','']);
+    for (const query of ['маяк','ФЕДОР','Петров Фёдор','@petrov']) {
+      const selection = challengeCalendar({ participants, results }, '2026-02-10', challengeResultMatcher('north', query));
+      expect(selection.count).toBe(1);
+      expect(selection.total).toBe(0);
+      expect(selection.rows.map(r => r.user.id)).toEqual([person.id]);
+      expect([...selection.rows[0]!.values]).toEqual([['2026-01-30', 0]]);
+      expect(selection.months.map(m => m.key)).toEqual(['2026-01','2026-02']);
+    }
+    expect(challengeCalendar({ participants, results }, '2026-02-10', challengeResultMatcher('', 'маяк')).total).toBe(12);
+    expect(challengeResultMatcher('old','Соколов')(pending)).toBe(true);
+    expect(challengeResultMatcher('south','Соколов')(pending)).toBe(false);
+    expect(challengeCalendar({ participants, results }, '2026-02-10', challengeResultMatcher('south','нет такого')).rows).toEqual([]);
   });
   it('includes full consecutive calendar months, including empty months and leap day', () => {
     const schedule = { start: '2023-12-28T10:00:00Z', end: '2024-03-03T10:00:00Z' };

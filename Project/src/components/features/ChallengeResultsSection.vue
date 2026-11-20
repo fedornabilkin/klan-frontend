@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import type { Entity } from '@shared/contracts';
-import { challengeCalendar, paginateChallengeResults } from '@/domain/challengeResults';
+import { searchTerm, useDebouncedValue } from '@/composables/useFilterDelay';
+import { challengeCalendar, challengeResultMatcher, challengeTeamOptions, paginateChallengeResults } from '@/domain/challengeResults';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -12,13 +13,20 @@ function localDay(date: Date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 const today = ref(localDay(new Date()));
-const calendar = computed(() => challengeCalendar(props.entity, today.value));
+const search = ref('');
+const teamId = ref<string | null>(null);
+const teamOptions = computed(() => challengeTeamOptions(props.entity));
+const filters = useDebouncedValue(() => ({ teamId: teamId.value, query: searchTerm(search.value) }));
+const filtered = computed(() => filters.value.teamId !== null || !!filters.value.query);
+const matches = computed(() => challengeResultMatcher(filters.value.teamId, filters.value.query));
+const calendar = computed(() => challengeCalendar(props.entity, today.value, matches.value));
+function clearFilters() { search.value = ''; teamId.value = null; }
 const page = ref(1), pendingPage = ref(1);
 const perPage = 25;
 const pages = computed(() => Math.max(1, Math.ceil(calendar.value.rows.length / perPage)));
 const visible = computed(() => calendar.value.rows.slice((page.value - 1) * perPage, page.value * perPage));
 const unit = computed(() => props.entity.goal?.unit || 'ед.');
-const pending = computed(() => [...props.entity.pendingResults ?? []].sort((a,b) =>
+const pending = computed(() => (props.entity.pendingResults ?? []).filter(matches.value).sort((a,b) =>
   a.user.name.localeCompare(b.user.name, 'ru') || a.user.id.localeCompare(b.user.id) || a.sourceCell.localeCompare(b.sourceCell, 'ru', { numeric:true })));
 const pendingSelected = computed(() => paginateChallengeResults(pending.value, pendingPage.value));
 const viewport = ref<HTMLElement>();
@@ -53,7 +61,8 @@ function refreshDate() {
 }
 watch(pages, value => { page.value = Math.min(page.value, value); });
 watch(() => pendingSelected.value.page, value => { pendingPage.value = value; });
-watch(() => props.entity.id, () => { page.value = pendingPage.value = 1; });
+watch(filters, () => { page.value = pendingPage.value = 1; });
+watch(() => props.entity.id, () => { clearFilters(); page.value = pendingPage.value = 1; });
 watch([() => props.entity.id, todayIndex, () => calendar.value.days.length], centerDay, { flush: 'post' });
 onMounted(() => {
   refreshDate();
@@ -77,6 +86,18 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
 <template>
   <section class="daily-results" :aria-labelledby="sectionId">
     <h2 :id="sectionId"><Icon name="calendar-days" />Результаты по дням</h2>
+    <div class="daily-filters">
+      <label>Участник
+        <input v-model="search" type="search" placeholder="Имя, позывной или @username (от 3 символов)" />
+      </label>
+      <label>Команда
+        <select v-model="teamId">
+          <option :value="null">Все команды</option>
+          <option v-for="team in teamOptions" :key="team.value" :value="team.value">{{ team.label }}</option>
+        </select>
+      </label>
+      <button v-if="search || teamId !== null" type="button" class="reset-filters" @click="clearFilters">Сбросить</button>
+    </div>
     <div v-if="pending.length" class="pending-notice" role="note">
       <strong>Есть результаты с неуточнённой датой</strong>
       <p>Записей: {{ pending.length.toLocaleString('ru-RU') }}. Их сумма — {{ pendingSelected.value.toLocaleString('ru-RU') }} {{ unit }} — пока не включена в общий результат и рейтинги.</p>
@@ -116,7 +137,8 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
         </tbody>
       </table>
     </div>
-    <p v-if="!calendar.count" class="daily-empty">Результаты пока не добавлены.</p>
+    <p v-if="!calendar.rows.length && filtered" class="daily-empty" role="status">По этим условиям в таблице нет участников.</p>
+    <p v-else-if="!calendar.count" class="daily-empty">Результаты пока не добавлены.</p>
     <div v-if="pages > 1" class="daily-pagination">
       <span>Участники {{ (page - 1) * perPage + 1 }}–{{ Math.min(page * perPage, calendar.rows.length) }} из {{ calendar.rows.length }}</span>
       <Pagination v-model:page="page" :pages="pages" />
@@ -152,6 +174,12 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
 <style scoped>
 .daily-results{min-width:0;border:1px solid #302d29;border-radius:.9rem;padding:clamp(.8rem,2vw,1.5rem);background:#1a1919}
 .daily-results h2{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;font-size:1rem;font-weight:650}.daily-results h2 :deep(svg){color:#d88d52}
+.daily-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem .8rem;margin-bottom:.9rem}
+.daily-filters label{display:grid;gap:.3rem;flex:1 1 11rem;min-width:0;color:#c0afa0;font-size:.76rem}
+.daily-filters label:first-child{flex:2 1 16rem}
+.daily-filters input,.daily-filters select{box-sizing:border-box;width:100%;min-width:0;min-height:2.65rem;padding:.45rem .65rem;border:1px solid var(--border);border-radius:.45rem;background:var(--surface-raised);color:var(--text);font:inherit;font-size:.83rem;color-scheme:dark}
+.reset-filters{min-height:2.65rem;background:none;border:0;color:var(--accent);font:inherit;font-size:.78rem;cursor:pointer}
+.daily-filters :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .daily-summary,.daily-pagination{display:flex;align-items:center;gap:.5rem 1.2rem;flex-wrap:wrap;color:#b9ada0;font-size:.76rem;margin:.75rem 0}
 .daily-summary strong{color:#e8c3a3}.daily-pagination{justify-content:center;margin-top:1rem}.daily-pagination :deep(.pagination){margin:0}
 .daily-table-wrap{overflow-x:auto;max-width:100%;border:1px solid #3a3028;border-radius:.5rem;scrollbar-color:#655447 #24201d}
