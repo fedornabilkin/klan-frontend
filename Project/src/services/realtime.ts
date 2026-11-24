@@ -1,4 +1,4 @@
-import { ref, shallowReactive } from 'vue';
+import { computed, ref, shallowReactive } from 'vue';
 import type { Activity } from '@shared/contracts';
 export type RealtimeMessage = { type: 'invalidate'; resource: string } | { type: 'activity'; data: Activity };
 type Listener = (message: RealtimeMessage) => void;
@@ -8,6 +8,9 @@ const presenceKnown = ref(false);
 export function userPresence(id: string): 'online' | 'offline' | 'unknown' {
   return presenceKnown.value ? (online.has(id) ? 'online' : 'offline') : 'unknown';
 }
+
+export const onlineCount = computed(() => presenceKnown.value ? online.size : null);
+export function onlineIds() { return presenceKnown.value ? [...online] : null; }
 
 function clearPresence() {
   presenceKnown.value = false;

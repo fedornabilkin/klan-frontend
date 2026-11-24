@@ -13,6 +13,7 @@ import PageHeader from '@/components/ui/PageHeader.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import Icon from '@/components/ui/Icon.vue';
+import LocationCatalogAdmin from '@/components/features/LocationCatalogAdmin.vue';
 import CatalogEntryModal from '@/components/features/CatalogEntryModal.vue';
 import CatalogDeleteModal from '@/components/features/CatalogDeleteModal.vue';
 
@@ -23,6 +24,9 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const canManage = computed(() => auth.isAdmin || Boolean((auth.user as User | null)?.access?.capabilities.includes('catalog.manage')));
+type CatalogTab = CatalogKind | 'countries' | 'cities';
+const tab = computed<CatalogTab>(() => ['items','countries','cities'].includes(String(route.query.catalog)) ? route.query.catalog as CatalogTab : 'tags');
+const geography = computed(() => tab.value === 'countries' || tab.value === 'cities');
 const kind = computed<CatalogKind>(() => route.query.catalog === 'items' ? 'items' : 'tags');
 const query = computed(() => typeof route.query.q === 'string' ? searchTerm(route.query.q.slice(0, 200)) : '');
 const sortOptions = [
@@ -47,7 +51,9 @@ let disposed = false;
 function updateQuery(changes: Record<string, string | undefined>): void {
   void router.replace({ query: { ...route.query, ...changes } });
 }
-function changeCatalog(value: CatalogKind): void { applyFilters({ catalog: value === 'tags' ? undefined : value, page: undefined, q: undefined }); }
+function changeCatalog(value: CatalogTab): void {
+  void router.push({ query: { catalog: value === 'tags' ? undefined : value } });
+}
 function changeSort(value: CatalogSort): void { applyFilters({ sort: value === 'name' ? undefined : value, page: undefined }); }
 function changePage(value: number): void { updateQuery({ page: value === 1 ? undefined : String(value) }); }
 function edit(entry: CatalogEntryModel | null): void { selected.value = entry; editorOpen.value = true; }
@@ -60,7 +66,7 @@ function usageDescription(entry: CatalogEntryModel): string {
 }
 async function refresh(): Promise<void> {
   controller?.abort();
-  if (!canManage.value || disposed) { loading.value = false; return; }
+  if (!canManage.value || geography.value || disposed) { loading.value = false; return; }
   controller = new AbortController();
   const signal = controller.signal;
   loading.value = true; error.value = '';
@@ -73,14 +79,14 @@ async function refresh(): Promise<void> {
   finally { if (!signal.aborted && !disposed) loading.value = false; }
 }
 watch(query, value => { if (searchTerm(search.value) !== value) search.value = value; });
-watch(search, value => { applyFilters({ q: searchTerm(value) || undefined, page: undefined }); });
+watch(search, value => { if (!geography.value) applyFilters({ q: searchTerm(value) || undefined, page: undefined }); });
 watch(kind, () => {
   search.value = query.value;
   selected.value = null; editorOpen.value = false; deleteOpen.value = false;
 });
-watch([kind, query, sort, page, canManage], () => { void refresh(); }, { immediate: true });
+watch([tab, query, sort, page, canManage], () => { void refresh(); }, { immediate: true });
 useRealtime(message => {
-  if (message.type === 'invalidate' && [kind.value, 'catalogs', 'users', 'events', 'teams', 'challenges', 'books', 'news', 'feedback', 'rules', '*'].includes(message.resource) && !realtimeTimer) {
+  if (!geography.value && message.type === 'invalidate' && [kind.value, 'catalogs', 'users', 'events', 'teams', 'challenges', 'books', 'news', 'feedback', 'rules', '*'].includes(message.resource) && !realtimeTimer) {
     realtimeTimer = setTimeout(() => { realtimeTimer = undefined; void refresh(); }, 80);
   }
 });
@@ -89,73 +95,74 @@ onBeforeUnmount(() => { disposed = true; controller?.abort(); if (realtimeTimer)
 
 <template lang="pug">
 .catalog-page
-  PageHeader(title="Справочники" eyebrow="УПРАВЛЕНИЕ СООБЩЕСТВОМ" description="Общие теги и снаряжение. Переименование сохраняет связи во всём сообществе.")
-    RouterLink.catalog-back(to="/admin")
-      Icon(name="arrow-left")
-      | Управление
+  PageHeader(title="Справочники" eyebrow="УПРАВЛЕНИЕ СООБЩЕСТВОМ")
   NAlert(v-if="!canManage" type="error" title="Доступ ограничен") Для управления справочниками нужно соответствующее разрешение.
   template(v-else)
     .catalog-switch(role="group" aria-label="Выбор справочника")
-      NButton(:type="kind === 'tags' ? 'primary' : 'default'" :aria-pressed="kind === 'tags'" @click="changeCatalog('tags')")
+      NButton(:type="tab === 'tags' ? 'primary' : 'default'" :aria-pressed="tab === 'tags'" @click="changeCatalog('tags')")
         template(#icon)
           Icon(name="tags")
         | Теги и интересы
-      NButton(:type="kind === 'items' ? 'primary' : 'default'" :aria-pressed="kind === 'items'" @click="changeCatalog('items')")
+      NButton(:type="kind === 'items' ? 'primary' : 'default'" :aria-pressed="tab === 'items'" @click="changeCatalog('items')")
         template(#icon)
           Icon(name="backpack")
         | Предметы и снаряжение
-    .catalog-summary(aria-label="Состояние справочника")
-      .catalog-stat
-        strong {{ summary.entries }}
-        span Всего записей
-      .catalog-stat
-        strong {{ summary.used }}
-        span Используются
-      .catalog-stat
-        strong {{ summary.unused }}
-        span Без связей
-    .catalog-toolbar
-      NInput(v-model:value="search" placeholder="Поиск по названию (от 3 символов)" aria-label="Поиск в справочнике" clearable :maxlength="200")
-        template(#prefix)
-          Icon(name="search")
-      NSelect.catalog-sort(:value="sort" :options="sortOptions" aria-label="Сортировка справочника" @update:value="changeSort")
-      NButton(type="primary" @click="edit(null)")
+      NButton(v-for="option in [{ value:'countries', title:'Страны' }, { value:'cities', title:'Города' }] as const" :key="option.value" :type="tab === option.value ? 'primary' : 'default'" :aria-pressed="tab === option.value" @click="changeCatalog(option.value)")
         template(#icon)
-          Icon(name="plus")
-        | {{ kind === 'tags' ? 'Создать тег' : 'Создать предмет' }}
-    NAlert.catalog-note(type="info" :show-icon="true") Используемую запись нельзя удалить. Сначала снимите её с профилей или материалов. Переименовать можно любую запись.
-    NAlert(v-if="error" type="error" :title="error" role="alert")
-      NButton(size="small" @click="refresh") Повторить
-    .catalog-list(v-else aria-live="polite")
-      .catalog-list-head
-        span {{ kind === 'tags' ? 'Теги' : 'Предметы' }}
-        span Найдено: {{ meta.total }}
-      template(v-if="loading")
-        NSkeleton(v-for="index in 4" :key="index" height="4.5rem" style="margin: 1rem; width: calc(100% - 2rem)")
-      template(v-else-if="entries.length")
-        article.catalog-row(v-for="entry in entries" :key="entry.id")
-          .catalog-entry-copy
-            h2 {{ entry.name }}
-            p {{ usageDescription(entry) }}
-            small(v-if="!entry.canDelete") Удаление недоступно: запись используется
-          .catalog-row-actions
-            NButton(secondary circle :aria-label="`Переименовать ${entry.name}`" @click="edit(entry)")
-              template(#icon)
-                Icon(name="pen")
-            span(:tabindex="entry.canDelete ? undefined : 0" :data-tooltip="entry.canDelete ? 'Удалить запись' : 'Сначала снимите все связи'")
-              NButton(secondary circle type="error" :disabled="!entry.canDelete" :aria-label="`Удалить ${entry.name}${entry.canDelete ? '' : ' — запись используется'}`" @click="remove(entry)")
+          Icon(:name="option.value === 'countries' ? 'globe' : 'location-dot'")
+        | {{ option.title }}
+    LocationCatalogAdmin(v-if="tab === 'countries' || tab === 'cities'" :tab="tab")
+    template(v-else)
+      .catalog-summary(aria-label="Состояние справочника")
+        .catalog-stat
+          strong {{ summary.entries }}
+          span Всего записей
+        .catalog-stat
+          strong {{ summary.used }}
+          span Используются
+        .catalog-stat
+          strong {{ summary.unused }}
+          span Без связей
+      .catalog-toolbar
+        NInput(v-model:value="search" placeholder="Поиск по названию (от 3 символов)" aria-label="Поиск в справочнике" clearable :maxlength="200")
+          template(#prefix)
+            Icon(name="search")
+        NSelect.catalog-sort(:value="sort" :options="sortOptions" aria-label="Сортировка справочника" @update:value="changeSort")
+        NButton(type="primary" @click="edit(null)")
+          template(#icon)
+            Icon(name="plus")
+          | {{ kind === 'tags' ? 'Создать тег' : 'Создать предмет' }}
+      NAlert.catalog-note(type="info" :show-icon="true") Используемую запись нельзя удалить. Сначала снимите её с профилей или материалов. Переименовать можно любую запись.
+      NAlert(v-if="error" type="error" :title="error" role="alert")
+        NButton(size="small" @click="refresh") Повторить
+      .catalog-list(v-else aria-live="polite")
+        .catalog-list-head
+          span {{ kind === 'tags' ? 'Теги' : 'Предметы' }}
+          span Найдено: {{ meta.total }}
+        template(v-if="loading")
+          NSkeleton(v-for="index in 4" :key="index" height="4.5rem" style="margin: 1rem; width: calc(100% - 2rem)")
+        template(v-else-if="entries.length")
+          article.catalog-row(v-for="entry in entries" :key="entry.id")
+            .catalog-entry-copy
+              h2 {{ entry.name }}
+              p {{ usageDescription(entry) }}
+              small(v-if="!entry.canDelete") Удаление недоступно: запись используется
+            .catalog-row-actions
+              NButton(secondary circle :aria-label="`Переименовать ${entry.name}`" @click="edit(entry)")
                 template(#icon)
-                  Icon(name="trash")
-      EmptyState(v-else title="Записи не найдены" description="Измените поиск или создайте новую запись справочника." :icon="kind === 'tags' ? 'tags' : 'backpack'")
-    Pagination(v-if="!error && !loading" :page="page" :pages="meta.pages" @change="changePage")
-    CatalogEntryModal(v-model:show="editorOpen" :kind="kind" :entry="selected" @saved="refresh")
-    CatalogDeleteModal(v-if="selected" v-model:show="deleteOpen" :kind="kind" :entry="selected" @deleted="refresh")
+                  Icon(name="pen")
+              span(:tabindex="entry.canDelete ? undefined : 0" :data-tooltip="entry.canDelete ? 'Удалить запись' : 'Сначала снимите все связи'")
+                NButton(secondary circle type="error" :disabled="!entry.canDelete" :aria-label="`Удалить ${entry.name}${entry.canDelete ? '' : ' — запись используется'}`" @click="remove(entry)")
+                  template(#icon)
+                    Icon(name="trash")
+        EmptyState(v-else title="Записи не найдены" description="Измените поиск или создайте новую запись справочника." :icon="kind === 'tags' ? 'tags' : 'backpack'")
+      Pagination(v-if="!error && !loading" :page="page" :pages="meta.pages" @change="changePage")
+      CatalogEntryModal(v-model:show="editorOpen" :kind="kind" :entry="selected" @saved="refresh")
+      CatalogDeleteModal(v-if="selected" v-model:show="deleteOpen" :kind="kind" :entry="selected" @deleted="refresh")
 </template>
 
 <style scoped>
 .catalog-page { display: grid; gap: 1.25rem; }
-.catalog-back { color: #c2c9bc; text-decoration: none; font-size: .82rem; display: flex; align-items: center; gap: .5rem; }
-.catalog-back:hover { color: #ff9433; }
 .catalog-switch { display: flex; gap: .75rem; flex-wrap: wrap; }
 .catalog-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
 .catalog-stat { display: grid; gap: .4rem; padding: 1rem; border: 1px solid #ffffff12; border-radius: .75rem; background: #191d19; }

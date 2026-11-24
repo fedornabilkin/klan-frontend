@@ -4,6 +4,8 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Icon from '@/components/ui/Icon.vue'
 import UserAvatar from '@/components/ui/UserAvatar.vue'
+import HeaderOnline from '@/components/features/HeaderOnline.vue'
+import { detailBreadcrumb } from '@/composables/useDetailBreadcrumb'
 import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 
 const auth = useAuthStore()
@@ -84,12 +86,16 @@ async function logout() {
         nav.breadcrumbs(aria-label="Хлебные крошки")
           RouterLink(to="/") Klan
           Icon(name="chevron-right")
+          template(v-if="route.path.startsWith('/admin/')")
+            RouterLink(to="/admin") Управление
+            Icon(name="chevron-right")
           RouterLink(v-if="route.params.id" :to="sectionPath") {{ currentTitle }}
           span(v-else) {{ currentTitle }}
           template(v-if="route.params.id")
             Icon(name="chevron-right")
-            span Детали
+            span(aria-current="page") {{ detailBreadcrumb?.path === route.path ? detailBreadcrumb.title : 'Загрузка…' }}
       .topbar-actions
+        HeaderOnline(v-if="auth.user")
         span.private-badge
           Icon(name="lock")
           span Закрытое сообщество
@@ -115,4 +121,10 @@ async function logout() {
 .topbar{height:auto;min-height:4.4rem;padding-block:.6rem}.topbar-start{min-width:0;flex:1 1 auto}.breadcrumbs{min-width:0;overflow:hidden;white-space:nowrap}.breadcrumbs>a,.breadcrumbs>span{overflow:hidden;text-overflow:ellipsis;min-width:0}.breadcrumbs>svg{flex-shrink:0}.topbar-actions{min-width:0;flex:0 1 auto}.topbar-account{display:flex;align-items:center;gap:.25rem;min-width:0;border-left:1px solid var(--border);padding-left:.8rem}.account-profile{display:flex;align-items:center;gap:.7rem;min-width:0;border-radius:.35rem}.account-profile :deep(.avatar){flex-shrink:0}.account-caption{display:flex;flex-direction:column;gap:.2rem;min-width:0;max-width:20rem;text-align:right}.account-caption strong{font-size:.73rem;font-weight:700;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.account-caption span{font-size:.59rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-profile:hover .account-caption strong{color:var(--accent)}.account-logout{margin-left:.25rem}.account-error{margin:0;padding:.7rem 1rem;color:#f2a19b;background:#42231e;border-bottom:1px solid #694138;font-size:.8rem;line-height:1.5;overflow-wrap:anywhere}
 @media(max-width:75rem){.private-badge{display:none}.account-caption{max-width:15rem}}
 @media(max-width:40rem){.topbar{gap:.4rem;padding-inline:.75rem}.topbar-start{flex:0 0 auto}.breadcrumbs,.header-rules{display:none}.topbar-actions{flex:1 1 auto;justify-content:flex-end;gap:.35rem}.topbar-account{max-width:100%;padding-left:.5rem}.account-profile{gap:.45rem;min-width:0}.account-caption{max-width:calc(100vw - 11.5rem)}.account-caption strong{font-size:.68rem}.account-caption span{font-size:.55rem}.account-logout{margin-left:0}.account-error{padding-inline:.75rem}}
+@media(max-width:40rem){
+  .topbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center}
+  .topbar-start{display:contents}.mobile-menu{grid-area:1/1}.topbar-actions{grid-area:1/2}
+  .breadcrumbs{display:flex;grid-column:1/-1;grid-row:2;padding:.2rem .15rem;gap:.45rem}
+  .breadcrumbs>a{flex-shrink:0}.breadcrumbs>[aria-current]{flex-shrink:1}
+}
 </style>

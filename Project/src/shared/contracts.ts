@@ -60,8 +60,14 @@ export interface Dashboard {
   stats: { users: number; cities: number; events: number; challenges: number; teams: number };
   events: Entity[]; challenges: Entity[]; teams: Entity[]; activity: Activity[];
 }
+export interface ChallengePodium {
+  id: string; publicId?: number; title: string; unit: string; finished: boolean;
+  teams: { team: Pick<Entity, 'id' | 'publicId' | 'title'>; score: number }[];
+  people: { user: UserIdentity; score: number }[];
+}
 export interface Statistics {
   users: number; cities: { name: string; count: number }[]; interests: { name: string; count: number }[];
   teams: { id: string; publicId?: number; title: string; count: number }[]; achievements: { name: string; count: number }[];
+  challenges: ChallengePodium[];
   activity: { date: string; count: number }[];
 }

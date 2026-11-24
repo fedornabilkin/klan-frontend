@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { searchTerm, useFilterDelay } from '@/composables/useFilterDelay';
+import { useRealtime } from '@/composables/useRealtime';
 import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NButton, NFormItem, NSelect, type SelectInst, type SelectOption } from 'naive-ui';
@@ -102,6 +103,11 @@ watch([() => selectedCountry.value?.code, () => searchTerm(query.value)], () => 
   controller?.abort();
   cities.value = [];
   cityDelay.schedule(() => { void loadCities(); });
+});
+useRealtime(message => {
+  if (message.type === 'invalidate' && ['location-catalog','*'].includes(message.resource)) {
+    void loadCountries().then(() => { if (!disposed && selectedCountry.value) void loadCities(); });
+  }
 });
 onMounted(() => { void loadCountries(); });
 onBeforeUnmount(() => { disposed = true; controller?.abort(); });

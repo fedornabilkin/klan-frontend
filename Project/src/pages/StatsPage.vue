@@ -4,6 +4,7 @@ import { NAlert, NButton, NSkeleton } from 'naive-ui'
 import type { ApiResponse, Statistics } from '@shared/contracts'
 import { api } from '@/services/api'
 import { useRealtime } from '@/composables/useRealtime'
+import UserAvatar from '@/components/ui/UserAvatar.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Icon from '@/components/ui/Icon.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -13,6 +14,10 @@ const loading = ref(true)
 const error = ref('')
 let controller: AbortController | undefined
 let requestId = 0
+const showSmallCities = ref(false)
+const smallCities = computed(() => stats.value?.cities.filter(city => city.count < 2) ?? [])
+const displayedCities = computed(() => showSmallCities.value ? stats.value?.cities : stats.value?.cities.filter(city => city.count >= 2))
+const cityMaximum = computed(() => maximum(stats.value?.cities ?? []))
 const totalActivity = computed(() => stats.value?.activity.reduce((sum, item) => sum + item.count, 0) ?? 0)
 const maximum = (values: { count: number }[]) => Math.max(1, ...values.map(item => item.count))
 const dateLabel = (value: string) => new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
@@ -69,12 +74,15 @@ useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].incl
           h2 География
           Icon(name="location-dot")
         .stats-bars(v-if="stats.cities.length")
-          .stats-bar-row(v-for="city in stats.cities" :key="city.name")
+          .stats-bar-row(v-for="city in displayedCities" :key="city.name")
             .stats-bar-label
               span {{ city.name || 'Не указан' }}
               b {{ city.count }}
             .stats-track
-              .stats-fill(:style="{ width: `${city.count / maximum(stats.cities) * 100}%` }")
+              .stats-fill(:style="{ width: `${city.count / cityMaximum * 100}%` }")
+          button.small-cities(v-if="smallCities.length" type="button" :aria-expanded="showSmallCities" @click="showSmallCities = !showSmallCities")
+            Icon(:name="showSmallCities ? 'chevron-up' : 'chevron-down'")
+            | {{ showSmallCities ? 'Скрыть' : 'Показать' }} города с одним участником ({{ smallCities.length }})
         EmptyState(v-else title="Пока нет данных" description="Города появятся после заполнения профилей.")
       section.stats-panel
         .stats-heading
@@ -96,13 +104,26 @@ useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].incl
         EmptyState(v-else title="Команд пока нет")
       section.stats-panel
         .stats-heading
-          h2 Достижения
+          h2 Челленджи и призовые места
           Icon(name="trophy")
-        .team-stats(v-if="stats.achievements.length")
-          .team-stat(v-for="achievement in stats.achievements" :key="achievement.name")
-            span {{ achievement.name }}
-            b {{ achievement.count }}
-        EmptyState(v-else title="Всё впереди" description="Достижения участников появятся здесь.")
+        article.podium(v-for="challenge in stats.challenges" :key="challenge.id")
+          RouterLink.podium-title(:to="`/challenges/${challenge.publicId ?? challenge.id}`") {{ challenge.title }}
+          small {{ challenge.finished ? 'Итоги' : 'Текущие места' }}
+          template(v-if="challenge.teams.length || challenge.people.length")
+            template(v-if="challenge.teams.length")
+              h3 Командный зачёт
+              ol
+                li(v-for="row in challenge.teams" :key="row.team.id")
+                  RouterLink(:to="`/teams/${row.team.publicId ?? row.team.id}`") {{ row.team.title }}
+                  b {{ row.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
+            template(v-if="challenge.people.length")
+              h3 Личный зачёт
+              ol
+                li(v-for="row in challenge.people" :key="row.user.id")
+                  UserAvatar(:user="row.user")
+                  b {{ row.score.toLocaleString('ru-RU') }} {{ challenge.unit }}
+          p(v-else) Подтверждённых результатов пока нет.
+        EmptyState(v-if="!stats.challenges?.length" title="Челленджей пока нет")
       section.stats-panel.stats-wide
         .stats-heading
           div
@@ -142,6 +163,8 @@ useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].incl
 .team-stats { display: grid; }
 .team-stat { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: #ccc; text-decoration: none; padding: .85rem 0; font-size: .85rem; border-bottom: 1px solid #ffffff08; }
 .team-stat b { color: #ff8a36; }
+.small-cities{justify-self:start;background:none;color:var(--accent);border:0;padding:.5rem 0;font:inherit;font-size:.78rem;cursor:pointer}.small-cities svg{margin-right:.5rem}
+.podium+.podium{margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1rem}.podium-title{font-weight:700}.podium small,.podium p{display:block;color:var(--muted);font-size:.78rem}.podium h3{font-size:.78rem;margin:1rem 0 .4rem}.podium ol{padding-left:1.45rem;margin:0}.podium li{font-size:.82rem;padding:.4rem 0;overflow-wrap:anywhere}.podium li::marker{color:var(--accent);font-weight:700}.podium li b{display:inline-block;margin-left:.65rem;font-size:.72rem;color:var(--muted)}
 .stats-wide { grid-column: 1 / -1; }
 .activity-chart { display: flex; align-items: flex-end; gap: .5rem; min-height: 12rem; overflow-x: auto; }
 .activity-column { display: flex; flex: 1; flex-direction: column; align-items: center; min-width: 2rem; gap: .5rem; }
