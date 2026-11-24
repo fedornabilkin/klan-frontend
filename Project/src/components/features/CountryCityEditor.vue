@@ -86,9 +86,8 @@ function changeCity(value: string | number | null) {
   if (props.disabled || value === 'saved-city') return;
   const known = cities.value.find(city => `city:${city.id}` === value);
   if (known && known.countryCode !== selectedCountry.value?.code) return;
-  const custom = value === null ? null : String(value).trim();
-  if (!known && custom && custom.length > 100) { cityError.value = 'Название города должно содержать не более 100 символов.'; return; }
-  emit('update:modelValue', selectLocationCity(props.modelValue, known ?? custom));
+  if (value !== null && !known) return;
+  emit('update:modelValue', selectLocationCity(props.modelValue, known ?? null));
   query.value = '';
 }
 function useCustomCity() {

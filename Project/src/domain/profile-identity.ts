@@ -43,6 +43,15 @@ export function identityDraft(user: Pick<User, 'name' | keyof IdentityDraft>): {
   };
 }
 
+export function changedTelegramUsername(value: string, original: string): string | null | undefined {
+  const username = normalizeTelegramUsername(value);
+  if (username === normalizeTelegramUsername(original)) return undefined;
+  if (username && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) {
+    throw new Error('Username Telegram должен начинаться с латинской буквы и содержать от 5 до 32 латинских букв, цифр или подчёркиваний.');
+  }
+  return username || null;
+}
+
 export function identityPatch(draft: IdentityDraft, original: IdentityDraft, today = latestProfileDate()): IdentityPatch {
   const patch: IdentityPatch = {};
   const nameFields = ['firstName', 'lastName', 'middleName'] as const;
@@ -56,11 +65,8 @@ export function identityPatch(draft: IdentityDraft, original: IdentityDraft, tod
     if (draft.callsign.trim().length > 120) throw new Error('Позывной должен содержать не более 120 символов.');
     patch.callsign = draft.callsign.trim();
   }
-  const username = normalizeTelegramUsername(draft.username);
-  if (username !== normalizeTelegramUsername(original.username)) {
-    if (username && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) throw new Error('Username Telegram: от 5 до 32 латинских букв, цифр или знаков подчёркивания; первый символ — буква.');
-    patch.username = username || null;
-  }
+  const username = changedTelegramUsername(draft.username, original.username);
+  if (username !== undefined) patch.username = username;
   if (draft.birthDate !== original.birthDate) {
     if (draft.birthDate && (!isCalendarDate(draft.birthDate) || draft.birthDate > today)) throw new Error('Укажите существующую дату рождения, не позднее сегодняшнего дня, или оставьте поле пустым.');
     patch.birthDate = draft.birthDate || null;

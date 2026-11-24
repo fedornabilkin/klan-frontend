@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import EventOrganizerField from './EventOrganizerField.vue';
+import CountryCityEditor from './CountryCityEditor.vue'
+import { changedTelegramUsername } from '@/domain/profile-identity'
 import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
-import type { ApiResponse, Entity, ProfileEntry, Resource, Tag, User } from '@shared/contracts'
-import { latestProfileDate } from '@shared/profile-identity'
+import type { ApiResponse, Entity, Location, ProfileEntry, Resource, Tag, User } from '@shared/contracts'
+import { latestProfileDate, normalizeTelegramUsername } from '@shared/profile-identity'
 import { isCalendarDate, normalizeProfileEntries } from '@shared/profile-entries'
 import NumberField from '@/components/ui/NumberField.vue'
 import { api } from '@/services/api'
@@ -16,10 +18,17 @@ const auth = useAuthStore()
 const busy = ref(false)
 const error = ref('')
 const tags = ref<Tag[]>([])
-const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', city: '', country: '', lat: null as number | null, lng: null as number | null, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: null as number | null, organizer: null as Entity['organizer'], tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
+const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', callsign: '', username: '', usernameChangeComment: '', location: { city: '', country: '', lat: null, lng: null } as Location, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: null as number | null, organizer: null as Entity['organizer'], tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
 const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Добавить факт' }, { field: 'achievements', label: 'Достижения', addLabel: 'Добавить достижение' }] as const
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
+const profile = computed(() => props.entity && 'name' in props.entity ? props.entity : undefined)
+const usernameChanged = computed(() => normalizeTelegramUsername(form.value.username) !== normalizeTelegramUsername(profile.value?.username ?? ''))
+const coordinatesLocked = ref(false)
+function selectProfileLocation(location: Location) {
+  form.value.location = location
+  coordinatesLocked.value = location.lat != null && location.lng != null
+}
 const hasDates = computed(() => ['events', 'challenges'].includes(props.resource))
 const savedGoal = computed(() => props.entity && 'goal' in props.entity ? props.entity : undefined)
 const originalFraction = computed(() => savedGoal.value?.category === form.value.category && savedGoal.value.goal?.target === form.value.target && !Number.isInteger(form.value.target))
@@ -60,11 +69,13 @@ watch(() => props.show, async show => {
   const entity = props.entity
   const item = entity && 'title' in entity ? entity : undefined
   const user = entity && 'name' in entity ? entity : undefined
+  coordinatesLocked.value = !!user?.location.city && user.location.lat != null && user.location.lng != null
   form.value = {
     title: item?.title ?? user?.name ?? '', description: item?.description ?? user?.bio ?? '', content: item?.content ?? '',
     status: item?.status ?? (props.resource === 'feedback' ? 'open' : 'active'), category: item?.category ?? ({ events: 'offline', challenges: 'count', rules: 'general' } as Partial<Record<Resource, string>>)[props.resource] ?? '',
     clanJoinedOn: user?.clanJoinedOn ?? '',
-    city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null,
+    location: { city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null },
+    callsign: user?.callsign ?? '', username: user?.username ?? '', usernameChangeComment: '',
     start: localDate(item?.schedule?.start), end: localDate(item?.schedule?.end), motto: item?.motto ?? '', target: item?.goal?.target ?? 100,
     unit: item?.goal?.unit ?? 'раз', capacity: item?.capacity ?? null, organizer: item?.organizer ?? null, tagIds: entity?.tags.map(tag => tag.id) ?? [],
     facts: normalizeProfileEntries(user?.facts, `${user?.id}:facts`),
@@ -83,11 +94,18 @@ function updateEntryDate(entry: ProfileEntry, event: Event) {
   entry.date = (event.target as HTMLInputElement).value || null
 }
 async function save() {
+  if (busy.value) return
   error.value = ''
   if (isUser.value && !props.entity) { error.value = 'Профили создаются при первом входе через Telegram.'; return }
   if (!form.value.title.trim()) { error.value = 'Укажите название или имя.'; return }
   const f = form.value
+  let username: string | null | undefined
   if (isUser.value) {
+    try { username = changedTelegramUsername(f.username, profile.value?.username ?? '') }
+    catch (cause) { error.value = (cause as Error).message; return }
+    if (username !== undefined && !f.usernameChangeComment.trim()) {
+      error.value = 'Укажите причину изменения логина Telegram.'; return
+    }
     for (const section of entrySections) {
       if (f[section.field].length > 100) { error.value = `${section.label}: можно сохранить не более 100 записей.`; return }
       for (const entry of f[section.field]) {
@@ -99,7 +117,7 @@ async function save() {
   if (hasDates.value && (!Number.isFinite(Date.parse(f.start)) || !Number.isFinite(Date.parse(f.end)) || Date.parse(f.end) <= Date.parse(f.start))) {
     error.value = 'Укажите период: окончание должно быть позже начала.'; return
   }
-  if (hasLocation.value && !(f.lat === null && f.lng === null) && (typeof f.lat !== 'number' || !Number.isFinite(f.lat) || f.lat < -90 || f.lat > 90 || typeof f.lng !== 'number' || !Number.isFinite(f.lng) || f.lng < -180 || f.lng > 180)) {
+  if (hasLocation.value && !(f.location.lat === null && f.location.lng === null) && (typeof f.location.lat !== 'number' || !Number.isFinite(f.location.lat) || f.location.lat < -90 || f.location.lat > 90 || typeof f.location.lng !== 'number' || !Number.isFinite(f.location.lng) || f.location.lng < -180 || f.location.lng > 180)) {
     error.value = 'Укажите обе координаты: широта от −90 до 90, долгота от −180 до 180, или оставьте обе пустыми.'; return
   }
   if (props.resource === 'events' && f.capacity != null && (typeof f.capacity !== 'number' || !Number.isInteger(f.capacity) || f.capacity < 1 || f.capacity > 100000)) {
@@ -111,10 +129,12 @@ async function save() {
   if (props.resource === 'challenges' && f.category !== 'distance' && !originalFraction.value && !Number.isInteger(f.target)) {
     error.value = 'Укажите целое число для цели.'; return
   }
-  const location = { city: f.city.trim(), country: f.country.trim(), lat: f.lat, lng: f.lng }
+  const location = { city: f.location.city.trim(), country: f.location.country.trim(), lat: f.location.lat, lng: f.location.lng }
   const selectedTags = tags.value.filter(tag => f.tagIds.includes(tag.id))
   const payload = isUser.value
     ? { name: f.title.trim(), bio: f.description, location, tags: selectedTags,
+        ...(f.callsign.trim() !== (profile.value?.callsign ?? '') && { callsign: f.callsign.trim() }),
+        ...(username !== undefined && { username, usernameChangeComment: f.usernameChangeComment.trim() }),
         ...(props.entity && 'name' in props.entity && f.clanJoinedOn !== (props.entity.clanJoinedOn ?? '') && { clanJoinedOn:f.clanJoinedOn || null }),
         facts: f.facts.map(entry => ({ ...entry })), achievements: f.achievements.map(entry => ({ ...entry })) }
     : {
@@ -128,7 +148,7 @@ async function save() {
   busy.value = true
   try {
     const result = props.entity
-      ? await api.patch<ApiResponse<unknown>>(`/${props.resource}/${props.entity.id}`, payload)
+      ? await api.patch<ApiResponse<unknown>>(`/${isUser.value ? 'admin/users' : props.resource}/${encodeURIComponent(props.entity.id)}`, payload)
       : await api.post<ApiResponse<unknown>>(`/${props.resource}`, payload)
     if (isUser.value && props.entity?.id === auth.user?.id) await auth.restore(true)
     emit('saved'); emit('update:show', false)
@@ -143,6 +163,14 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
     NAlert(v-if="error" type="error" :show-icon="false") {{ error }}
     NFormItem(:label="isUser ? 'Имя и фамилия' : 'Название'" required)
       NInput(v-model:value="form.title" :maxlength="120" autofocus)
+    template(v-if="isUser")
+      .editor-columns
+        NFormItem(label="Позывной")
+          NInput(v-model:value="form.callsign" :maxlength="120" :disabled="busy" aria-label="Позывной")
+        NFormItem(label="Логин Telegram")
+          NInput(v-model:value="form.username" :disabled="busy" placeholder="@username" aria-label="Логин Telegram")
+      NFormItem(v-if="usernameChanged" label="Причина изменения логина Telegram" required)
+        NInput(v-model:value="form.usernameChangeComment" type="textarea" :rows="2" :maxlength="1000" :disabled="busy" aria-label="Причина изменения логина Telegram" :input-props="{ required: true }")
     NFormItem(:label="isUser ? 'О себе' : 'Краткое описание'")
       NInput(v-model:value="form.description" type="textarea" :rows="3" :maxlength="5000")
     template(v-if="!isUser")
@@ -157,17 +185,19 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
     NFormItem(label="Теги")
       SearchSelect(v-model:value="form.tagIds" :options="tagOptions" multiple placeholder="Выберите теги сообщества")
     template(v-if="hasLocation")
-      .editor-columns
+      CountryCityEditor(v-if="isUser && show" :model-value="form.location" :disabled="busy" @update:model-value="selectProfileLocation")
+      .editor-columns(v-if="!isUser")
         NFormItem(label="Город")
-          NInput(v-model:value="form.city" :maxlength="100")
+          NInput(v-model:value="form.location.city" :maxlength="100")
         NFormItem(label="Страна")
-          NInput(v-model:value="form.country" :maxlength="100")
+          NInput(v-model:value="form.location.country" :maxlength="100")
       .editor-columns
         NFormItem(label="Широта")
-          NumberField(v-model="form.lat" aria-label="Широта" min="-90" max="90" step="any")
+          NumberField(v-model="form.location.lat" :disabled="busy || (isUser && coordinatesLocked)" aria-label="Широта" min="-90" max="90" step="any")
         NFormItem(label="Долгота")
-          NumberField(v-model="form.lng" aria-label="Долгота" min="-180" max="180" step="any")
-      p.editor-hint Координаты необязательны. Оставьте оба поля пустыми, если положение на карте неизвестно.
+          NumberField(v-model="form.location.lng" :disabled="busy || (isUser && coordinatesLocked)" aria-label="Долгота" min="-180" max="180" step="any")
+      p.editor-hint(v-if="isUser && coordinatesLocked") Координаты заданы для выбранного города.
+      p.editor-hint(v-else) Координаты необязательны. Оставьте оба поля пустыми, если положение на карте неизвестно.
     .editor-columns(v-if="hasDates")
       NFormItem(label="Начало" required)
         input.date-field(v-model="form.start" type="datetime-local" required)
