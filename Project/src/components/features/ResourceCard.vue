@@ -58,6 +58,7 @@ component.resource-card(:is="entity.likes ? 'article' : RouterLink" v-bind="enti
       h3(v-if="entity.likes")
         RouterLink.card-title-link(:to="path") {{ title }}
       h3(v-else) {{ title }}
+      p.card-date(v-if="resource === 'books' && entity.bookAuthor") {{ entity.bookAuthor }}
       p.card-description {{ entity.description }}
       .card-tags(v-if="entity.tags.length")
         span(v-for="tag in entity.tags.slice(0, 3)" :key="tag.id") {{ tag.name }}
@@ -72,7 +73,7 @@ component.resource-card(:is="entity.likes ? 'article' : RouterLink" v-bind="enti
         span(v-else-if="resource === 'books'")
           Icon(name="book-open")
           | Прочитали {{ entity.readerCount ?? entity.readers?.length ?? 0 }}
-        span(v-else) {{ dateLabel(entity.createdAt) }}
+        span(v-else-if="resource !== 'events'") {{ dateLabel(entity.createdAt) }}
         EntityLikeButton(v-if="entity.likes" :entity="entity" :summary="entity.likes")
         Icon(v-else name="arrow-right")
 </template>

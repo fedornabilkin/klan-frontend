@@ -175,6 +175,7 @@ export function buildLikeSummary(value: unknown): NonNullable<Entity['likes']> {
 }
 
 export class CommunityEntity implements Entity {
+  bookAuthor?: string;
   likes?: Entity['likes'];
   id!: string; type!: Entity['type']; title!: string; description!: string; status!: string; category!: string;
   tags!: Tag[]; createdAt!: string; location?: Location; schedule?: Entity['schedule']; cover?: string;
@@ -220,6 +221,7 @@ export class EntityBuilder {
       id: string(dto.id, 'entity.id'), publicId: publicId(dto.publicId, 'entity.publicId'), participantCount: dto.participantCount == null ? undefined : number(dto.participantCount, 'participantCount'), teamCount: dto.teamCount == null ? undefined : number(dto.teamCount, 'teamCount'), readerCount: dto.readerCount == null ? undefined : number(dto.readerCount, 'readerCount'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
       description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', ''),
       category: string(dto.category, 'entity.category', ''), tags: array(dto.tags, buildTag, 'entity.tags'),
+      bookAuthor: dto.bookAuthor == null ? undefined : string(dto.bookAuthor, 'entity.bookAuthor'),
       createdAt: string(dto.createdAt, 'entity.createdAt', ''),
       likes: dto.likes == null ? undefined : buildLikeSummary(dto.likes),
       location: dto.location == null ? undefined : buildLocation(dto.location),

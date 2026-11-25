@@ -19,7 +19,7 @@ const auth = useAuthStore()
 const busy = ref(false)
 const error = ref('')
 const tags = ref<Tag[]>([])
-const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', callsign: '', username: '', usernameChangeComment: '', location: { city: '', country: '', lat: null, lng: null } as Location, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: null as number | null, organizer: null as Entity['organizer'], tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
+const form = ref({ title: '', bookAuthor: '', description: '', clanJoinedOn: '', content: '', status: 'active', category: '', callsign: '', username: '', usernameChangeComment: '', location: { city: '', country: '', lat: null, lng: null } as Location, start: '', end: '', motto: '', target: 100 as number | null, unit: 'раз', capacity: null as number | null, organizer: null as Entity['organizer'], tagIds: [] as string[], facts: [] as ProfileEntry[], achievements: [] as ProfileEntry[] })
 const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Добавить факт' }, { field: 'achievements', label: 'Достижения', addLabel: 'Добавить достижение' }] as const
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
@@ -73,7 +73,7 @@ watch(() => props.show, async show => {
   const user = entity && 'name' in entity ? entity : undefined
   coordinatesLocked.value = !!user?.location.city && user.location.lat != null && user.location.lng != null
   form.value = {
-    title: item?.title ?? user?.name ?? '', description: item?.description ?? user?.bio ?? '', content: item?.content ?? '',
+    title: item?.title ?? user?.name ?? '', description: item?.description ?? user?.bio ?? '', content: item?.content ?? '', bookAuthor: item?.bookAuthor ?? '',
     status: item?.status ?? ({feedback:'open', books:'published'} as Partial<Record<Resource,string>>)[props.resource] ?? 'active', category: item?.category ?? ({ events: 'offline', challenges: 'count', rules: 'general' } as Partial<Record<Resource, string>>)[props.resource] ?? '',
     clanJoinedOn: user?.clanJoinedOn ?? '',
     location: { city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null },
@@ -140,7 +140,7 @@ async function save() {
         ...(props.entity && 'name' in props.entity && f.clanJoinedOn !== (props.entity.clanJoinedOn ?? '') && { clanJoinedOn:f.clanJoinedOn || null }),
         facts: f.facts.map(entry => ({ ...entry })), achievements: f.achievements.map(entry => ({ ...entry })) }
     : {
-        title: f.title.trim(), description: f.description, content: f.content, ...(canSetStatus.value && f.status !== initialStatus.value ? { status: f.status } : {}), category: f.category, tags: selectedTags,
+        title: f.title.trim(), description: f.description, ...(props.resource === 'books' ? {bookAuthor:f.bookAuthor.trim()} : {content:f.content}), ...(canSetStatus.value && f.status !== initialStatus.value ? { status: f.status } : {}), category: f.category, tags: selectedTags,
       ...(hasDates.value ? { schedule: { start: new Date(f.start).toISOString(), end: new Date(f.end).toISOString() } } : {}),
       ...(hasLocation.value ? { location } : {}),
       ...(props.resource === 'teams' ? { motto: f.motto } : {}),
@@ -165,6 +165,8 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
     NAlert(v-if="error" type="error" :show-icon="false") {{ error }}
     NFormItem(:label="isUser ? 'Имя и фамилия' : 'Название'" required)
       NInput(v-model:value="form.title" :maxlength="120" autofocus)
+    NFormItem(v-if="resource === 'books'" label="Автор книги")
+      NInput(v-model:value="form.bookAuthor" :maxlength="200" :input-props="{ 'aria-label':'Автор книги' }")
     template(v-if="isUser")
       .editor-columns
         NFormItem(label="Позывной")
@@ -183,7 +185,7 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
         NFormItem(label="Категория")
           NSelect(v-if="categoryOptions.length" :value="form.category" :options="categoryOptions" @update:value="changeCategory")
           NInput(v-else v-model:value="form.category" placeholder="Например, развитие")
-      NFormItem(label="Подробный текст")
+      NFormItem(v-if="resource !== 'books'" label="Подробный текст")
         NInput(v-model:value="form.content" type="textarea" :rows="5" :maxlength="20000")
     NFormItem(label="Теги")
       SearchSelect(v-model:value="form.tagIds" :options="tagOptions" multiple placeholder="Выберите теги сообщества")

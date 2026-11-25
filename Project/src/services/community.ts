@@ -1,8 +1,13 @@
 import type { ApiResponse, Dashboard, Entity, LikeSummary, ListResponse, Resource, Statistics, Tag } from '@shared/contracts';
 import { buildActivity, buildLikeSummary, buildResource, buildTag, CommunityEntity, EntityBuilder, object, UserModel } from '@/domain/builders';
 import { api, type Query } from './api';
+import type { SavedChallengeDay } from '@/domain/challengeResults';
 
 export const communityService = {
+  async saveChallengeDay(id: string, day: SavedChallengeDay) {
+    await api.put(`/challenges/${encodeURIComponent(id)}/results?view=day`, day);
+    return day;
+  },
   async list(resource: Resource | 'admin/users', query?: Query, signal?: AbortSignal): Promise<ListResponse<UserModel | CommunityEntity>> {
     const response = await api.get<ListResponse<unknown>>(`/${resource}`, query, signal);
     if (!Array.isArray(response.data)) throw new Error('Некорректный список в ответе сервера.');

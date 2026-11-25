@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import type { Entity } from '@shared/contracts';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import type { Entity, Participation } from '@shared/contracts';
 import { searchTerm, useDebouncedValue } from '@/composables/useFilterDelay';
-import { challengeCalendar, challengeResultMatcher, challengeTeamOptions, paginateChallengeResults } from '@/domain/challengeResults';
+import { challengeCalendar, challengeResultMatcher, challengeTeamOptions, paginateChallengeResults, resultInputLimits, type resultPeriod, type SavedChallengeDay } from '@/domain/challengeResults';
+import { communityService } from '@/services/community';
+import NumberField from '@/components/ui/NumberField.vue';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import Icon from '@/components/ui/Icon.vue';
 
-const props = defineProps<{ entity: Entity }>();
+const props = defineProps<{ entity: Entity; participant?: Participation; period: ReturnType<typeof resultPeriod> }>();
+const emit = defineEmits<{saved:[id:string, day:SavedChallengeDay]}>();
 const sectionId = useId();
 function localDay(date: Date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -30,6 +33,53 @@ const pending = computed(() => (props.entity.pendingResults ?? []).filter(matche
   a.user.name.localeCompare(b.user.name, 'ru') || a.user.id.localeCompare(b.user.id) || a.sourceCell.localeCompare(b.sourceCell, 'ru', { numeric:true })));
 const pendingSelected = computed(() => paginateChallengeResults(pending.value, pendingPage.value));
 const viewport = ref<HTMLElement>();
+const editingDay = ref(''), draft = ref<number|null>(null), saving = ref(false);
+const saveError = ref(''), notice = ref('');
+const limits = computed(() => resultInputLimits(props.entity.category));
+const filteredOwnDays = computed(() => {
+  const dates = new Map<string, boolean>();
+  if (filtered.value && props.participant) {
+    for (const row of props.entity.results ?? []) {
+      if (row.user.id === props.participant.user.id) dates.set(row.date, dates.get(row.date) !== false && matches.value(row));
+    }
+  }
+  return dates;
+});
+function editable(userId: string, day: string) {
+  const member = props.participant;
+  return !!member && member.user.id === userId && props.period.open && day >= props.period.first && day <= props.period.last
+    && (!filtered.value || (filteredOwnDays.value.get(day) ?? matches.value(member)));
+}
+async function startEdit(day: string, value?: number) {
+  if (saving.value) return;
+  editingDay.value = day;
+  draft.value = value ?? null;
+  saveError.value = notice.value = '';
+  await nextTick();
+  const input = viewport.value?.querySelector<HTMLInputElement>('.cell-editor input');
+  input?.focus({preventScroll:true});
+  input?.select();
+}
+async function finishEdit(day: string) {
+  editingDay.value = '';
+  saveError.value = '';
+  await nextTick();
+  viewport.value?.querySelector<HTMLButtonElement>(`button[data-edit-day="${day}"]`)?.focus({preventScroll:true});
+}
+async function saveDay() {
+  const date = editingDay.value, id = props.entity.id;
+  if (saving.value || draft.value === null || !editable(props.participant?.user.id ?? '', date)) return;
+  saving.value = true;
+  saveError.value = '';
+  try {
+    const saved = await communityService.saveChallengeDay(id, {date, value:draft.value});
+    emit('saved', id, saved);
+    notice.value = `Сохранено за ${date.split('-').reverse().join('.')}: ${format.format(saved.value)} ${unit.value}`;
+    void finishEdit(date);
+  } catch (cause) { saveError.value = cause instanceof Error ? cause.message : 'Не удалось сохранить результат'; }
+  finally { saving.value = false; }
+}
+watch([filters, page, () => props.period.open], () => { editingDay.value = ''; saveError.value = notice.value = ''; });
 const todayIndex = computed(() => calendar.value.days.indexOf(today.value));
 const geometry = computed(() => ({
   '--days': calendar.value.days.length,
@@ -106,6 +156,8 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
       <span>Записей: <strong>{{ format.format(calendar.count) }}</strong></span>
       <span>Сумма: <strong>{{ format.format(calendar.total) }}</strong> {{ unit }}</span>
     </div>
+    <p v-if="saveError" class="day-error" role="alert">{{ saveError }}</p>
+    <p v-else-if="notice" class="day-notice" role="status">{{ notice }}</p>
     <div ref="viewport" class="daily-table-wrap calendar" role="region" aria-label="Результаты участников по дням" tabindex="0" :style="geometry">
       <table :class="{ 'has-today': todayIndex >= 0 }">
         <colgroup><col class="person-col" /></colgroup>
@@ -129,8 +181,20 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
           <tr v-for="row in visible" :key="row.user.id">
             <th scope="row" class="person"><UserAvatar :user="row.user" /></th>
             <td v-if="todayIndex >= 0" class="spacer" aria-hidden="true" />
-            <td v-for="day in calendar.days" :key="day" :class="{ current: day === today, missing: !row.values.has(day) }">
-              {{ row.values.has(day) ? format.format(row.values.get(day)!) : '—' }}
+            <td v-for="day in calendar.days" :key="day" :class="{ current: day === today, missing: !row.values.has(day), 'own-day': row.user.id === participant?.user.id }">
+              <template v-if="editable(row.user.id, day)">
+                <form v-if="editingDay === day" class="cell-editor" @submit.prevent="saveDay" @keydown.esc.prevent="!saving && finishEdit(day)">
+                  <NumberField v-model="draft" v-bind="limits" :aria-label="`Результат за ${day}, ${unit}`" :disabled="saving" required />
+                  <div>
+                    <button type="submit" aria-label="Сохранить результат" data-tooltip="Сохранить" :disabled="saving"><Icon name="check" /></button>
+                    <button type="button" aria-label="Отменить ввод" data-tooltip="Отменить" :disabled="saving" @click="finishEdit(day)"><Icon name="xmark" /></button>
+                  </div>
+                </form>
+                <button v-else type="button" class="day-edit" :data-edit-day="day" :aria-label="`Изменить результат за ${day}: ${row.values.get(day) ?? 'нет записи'}`" data-tooltip="Ввести результат" :disabled="saving" @click="startEdit(day, row.values.get(day))">
+                  {{ row.values.has(day) ? format.format(row.values.get(day)!) : '+' }}
+                </button>
+              </template>
+              <template v-else>{{ row.values.has(day) ? format.format(row.values.get(day)!) : '—' }}</template>
             </td>
             <td v-if="todayIndex >= 0" class="spacer" aria-hidden="true" />
           </tr>
@@ -172,6 +236,16 @@ onBeforeUnmount(() => { observer?.disconnect(); cancelAnimationFrame(frame); cle
 </template>
 
 <style scoped>
+.calendar td.own-day { padding-inline: .12rem; }
+.day-edit,.cell-editor button { border: 1px solid var(--border); border-radius: .35rem; background: var(--surface); color: var(--accent); font: inherit; cursor: pointer; }
+.day-edit { width: 100%; min-height: 2rem; padding: 0; }
+.cell-editor :deep(input) { box-sizing: border-box; padding: .25rem .1rem; height: 2rem; text-align: center; appearance: textfield; }
+.cell-editor :deep(input::-webkit-inner-spin-button) { appearance: none; }
+.cell-editor div { display: flex; gap: 1px; margin-top: .15rem; }
+.cell-editor button { flex: 1; min-width: 0; min-height: 1.65rem; padding: 0; }
+.day-edit:focus-visible,.cell-editor button:focus-visible { outline: 2px solid var(--accent); }
+.day-notice,.day-error { font-size: .8rem; color: var(--muted); }
+.day-error { color: #f2a19b; }
 .daily-results{min-width:0;border:1px solid #302d29;border-radius:.9rem;padding:clamp(.8rem,2vw,1.5rem);background:#1a1919}
 .daily-results h2{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;font-size:1rem;font-weight:650}.daily-results h2 :deep(svg){color:#d88d52}
 .daily-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem .8rem;margin-bottom:.9rem}

@@ -33,6 +33,7 @@ export interface ChallengeResult { user: User; date: string; value: number; team
 export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
 export interface LikeSummary { count: number; liked: boolean }
 export interface Entity {
+  bookAuthor?: string;
   likes?: LikeSummary;
   publicId?: number; participantCount?: number; teamCount?: number; readerCount?: number;
   id: string; type: Exclude<Resource, 'users'>; title: string; description: string;

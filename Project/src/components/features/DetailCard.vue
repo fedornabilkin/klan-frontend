@@ -7,7 +7,9 @@ import StatusBadge from '@/components/ui/StatusBadge.vue';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 
 const props = defineProps<{ entity?: Entity; status?: string }>();
+const showPublication = computed(() => props.entity?.type !== 'challenges' && props.entity?.type !== 'events');
 const published = computed(() => {
+  if (!showPublication.value) return '';
   const date = new Date(props.entity?.createdAt ?? '');
   if (!Number.isFinite(date.getTime())) return '';
   return date.toLocaleString('ru-RU', {dateStyle:'short', timeStyle:props.entity?.type === 'feedback' ? 'short' : undefined});
@@ -22,13 +24,13 @@ article.detail-card.detail-panel
       slot(name="title")
         EntityTitle(v-if="entity?.status" :title="entity.title" :status="status ?? entity.status")
         h1(v-else-if="entity") {{ entity.title }}
-    .publication(v-if="entity && (published || entity.status || entity.author)")
+    .publication(v-if="entity && (published || entity.status || (showPublication && entity.author))")
       .publication-line
         time(v-if="published" :datetime="entity.createdAt" :aria-label="'Опубликовано: ' + published" data-tooltip="Дата публикации · ваше время")
           Icon(name="calendar")
           | {{ published }}
         StatusBadge(v-if="entity.status" :status="status ?? entity.status")
-      .publication-author(v-if="entity.author")
+      .publication-author(v-if="showPublication && entity.author")
         span Автор публикации
         UserAvatar(:user="entity.author")
   .detail-card-body

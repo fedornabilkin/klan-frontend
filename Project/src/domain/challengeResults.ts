@@ -6,6 +6,23 @@ const dayMs = 86_400_000;
 
 type ChallengeEntry = Pick<Participation, 'user' | 'team'>;
 
+export function resultPeriod(entity: Pick<Entity, 'schedule' | 'status'> | undefined, now: Date) {
+  const schedule = entity?.schedule;
+  const today = now.toISOString().slice(0, 10);
+  const first = schedule?.start.slice(0, 10) ?? '';
+  const end = schedule?.end.slice(0, 10) ?? '';
+  const started = !!schedule && Date.parse(schedule.start) <= now.getTime();
+  const open = !!entity && !!schedule && started && Date.parse(schedule.end) > now.getTime()
+    && !['completed','archived','closed','draft'].includes(entity.status);
+  return {first, last:end < today ? end : today, started, open};
+}
+
+export function resultInputLimits(category: string) {
+  return {min:0, max:category === 'attendance' ? 1 : 1e7, step:category === 'distance' ? 0.01 : 1};
+}
+
+export interface SavedChallengeDay { date: string; value: number }
+
 export function challengeTeamOptions(entity: Pick<Entity, 'participants' | 'results' | 'pendingResults'>) {
   const teams = new Map<string, string>();
   let hasSolo = false;

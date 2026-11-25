@@ -1,7 +1,7 @@
 import { challengeStandings } from './challengeStandings';
 import { describe, expect, it } from 'vitest';
 import type { ChallengeResult, Entity, User } from '@shared/contracts';
-import { challengeCalendar, challengeTeamOptions, challengeResultMatcher, paginateChallengeResults } from './challengeResults';
+import { challengeCalendar, challengeTeamOptions, challengeResultMatcher, paginateChallengeResults, resultPeriod } from './challengeResults';
 
 const user = (id: string, name = 'Иван Петров'): User => ({
   id, name, publicId: Number(id.slice(1)), role: 'member', bio: '', initials: 'ИП', color: '#abc',
@@ -19,6 +19,13 @@ const rows: ChallengeResult[] = [
 ];
 
 describe('challenge calendar', () => {
+  it('allows editing only between the start and finish instants and through the current UTC day', () => {
+    const challenge = {status:'active', schedule:{start:'2026-11-01T09:00:00Z',end:'2026-11-30T18:00:00Z'}};
+    expect(resultPeriod(challenge,new Date('2026-11-01T08:59:59Z')).open).toBe(false);
+    expect(resultPeriod(challenge,new Date('2026-11-02T00:30:00+03:00'))).toMatchObject({open:true,first:'2026-11-01',last:'2026-11-01'});
+    expect(resultPeriod(challenge,new Date(challenge.schedule.end)).open).toBe(false);
+    expect(resultPeriod({...challenge,status:'archived'},new Date(challenge.schedule.start)).open).toBe(false);
+  });
   it('retains zeros, missing days, former participants and distinct people with the same name', () => {
     const entity = { participants: [{ user: first }, { user: namesake }, { user: user('u4') }], results: [...rows, { ...rows[1]!, value: 3 }] };
     const matrix = challengeCalendar(entity, '2026-11-20');
