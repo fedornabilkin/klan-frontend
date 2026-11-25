@@ -38,7 +38,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
 <template lang="pug">
 .feature-page
   .list-page-heading
-    PageHeader(:title="meta.title" :description="meta.description" eyebrow="СООБЩЕСТВО KLAN")
+    PageHeader(:title="meta.title" :description="meta.description")
     NButton(v-if="resource === 'feedback'" type="primary" @click="showEditor = true")
       template(#icon)
         Icon(name="plus")

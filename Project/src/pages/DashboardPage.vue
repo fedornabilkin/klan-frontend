@@ -39,7 +39,7 @@ let unsubscribe: (() => void) | undefined
 let disposed = false
 const matchingCount = computed(() => points.value.reduce((sum, point) => sum + point.count, 0))
 const metrics = computed(() => [
-  { label: 'Участников в Klan', value: dashboard.value?.stats.users ?? '—', sub: 'Один круг. Общие ценности.', icon: 'users' },
+  { label: 'Участников в Клане', value: dashboard.value?.stats.users ?? '—', sub: 'Один круг. Общие ценности.', icon: 'users' },
   { label: 'Городов на карте', value: dashboard.value?.stats.cities ?? '—', sub: 'Своих найдёшь везде', icon: 'location-dot' },
   { label: 'Мероприятий в месяце', value: dashboard.value?.stats.events ?? '—', sub: 'Поводы встретиться', icon: 'calendar-days' },
   { label: 'Активных команд', value: dashboard.value?.stats.teams ?? '—', sub: 'Вместе можно больше', icon: 'shield-halved' },
@@ -112,10 +112,8 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); mapController?.abort()
 .dashboard
   .dashboard-intro
     div
-      .eyebrow ТВОЯ ТЕРРИТОРИЯ · ТВОИ ЛЮДИ
-      h1 Сильнее, когда 
-        span вместе.
-      p.lead Находи своих. Принимай вызовы. Делай то, что имеет значение.
+      h1 Что нового в Клане
+      p.lead Ближайшие встречи, текущий челлендж и результаты команд.
   p.inline-error(v-if="dashboardError") {{ dashboardError }}
     button.button.small(@click="loadDashboard") Повторить
   .metric-grid
@@ -131,8 +129,8 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); mapController?.abort()
       section.panel.map-panel
         .panel-heading
           div
-            h2 Наши люди. По всему миру.
-            p Точка на карте — начало настоящего знакомства.
+            h2 Кто из Клана рядом?
+            p Едешь в другой город? Посмотри, кто из наших там живёт.
           span.map-badge НА СВЯЗИ
         .map-tools
           CommunityTagFilter.map-tag-filter(v-model="selectedTags" v-model:query="q" :tags="rankedTags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
@@ -170,7 +168,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); mapController?.abort()
       section.panel
         .panel-heading
           div
-            h2 Своя команда — твоя опора
+            h2 Команды Клана
           RouterLink.text-link(to="/teams") Все команды
             Icon(name="arrow-right")
         .dashboard-teams

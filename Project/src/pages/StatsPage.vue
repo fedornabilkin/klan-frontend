@@ -40,7 +40,7 @@ useRealtime(message => { if (message.type === 'invalidate' && ['stats','*'].incl
 
 <template lang="pug">
 .stats-page
-  PageHeader(title="Сила в людях" eyebrow="СТАТИСТИКА СООБЩЕСТВА" description="География, общие интересы и то, что мы делаем вместе.")
+  PageHeader(title="Клан в цифрах" description="В каких городах мы живём и кто вышел в лидеры челленджей.")
     NButton(secondary :loading="loading" @click="load")
       template(#icon)
         Icon(name="refresh")

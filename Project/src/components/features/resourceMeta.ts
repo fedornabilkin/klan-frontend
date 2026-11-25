@@ -1,10 +1,10 @@
 import type { Resource } from '@shared/contracts';
 
 export const resourceMeta: Record<Resource, { title: string; singular: string; description: string; icon: string; action: string }> = {
-  users: { title: 'Участники', singular: 'Участник', description: 'Свои люди. Общие интересы. Новые маршруты.', icon: 'users', action: 'Найти своих' },
-  events: { title: 'Мероприятия', singular: 'Мероприятие', description: 'Встречаемся, учимся и выходим за привычные границы.', icon: 'compass', action: 'Все мероприятия' },
-  teams: { title: 'Команды', singular: 'Команда', description: 'В одиночку — быстрее. Вместе — дальше.', icon: 'shield', action: 'Все команды' },
-  challenges: { title: 'Челленджи', singular: 'Челлендж', description: 'Маленькие действия. Большие перемены.', icon: 'bolt', action: 'Все челленджи' },
+  users: { title: 'Найди своего', singular: 'Участник', description: 'Ищи по имени, позывному или интересам.', icon: 'users', action: 'Найти своих' },
+  events: { title: 'Где встречаемся?', singular: 'Мероприятие', description: 'Выбери встречу, посмотри, кто идёт, и отметь, что возьмёшь с собой.', icon: 'compass', action: 'Все встречи' },
+  teams: { title: 'Команды Клана', singular: 'Команда', description: 'Посмотри, кто в составе и как команда проходит челленджи.', icon: 'shield', action: 'Все команды' },
+  challenges: { title: 'Челленджи Клана', singular: 'Челлендж', description: 'Запиши результат за сегодня и посмотри, сколько уже сделала твоя команда.', icon: 'bolt', action: 'Все челленджи' },
   news: { title: 'Новости', singular: 'Новость', description: 'Чем живёт сообщество прямо сейчас.', icon: 'newspaper', action: 'Все новости' },
   feedback: { title: 'Обратная связь', singular: 'Предложение', description: 'Хорошие идеи начинаются с разговора.', icon: 'comment', action: 'Все предложения' },
   books: { title: 'Книги', singular: 'Книга', description: 'Знания, которые стоит взять с собой.', icon: 'book', action: 'Все книги' },

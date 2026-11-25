@@ -4,7 +4,7 @@ import type { Resource } from '@shared/contracts';
 import type { Capability } from '@shared/access';
 
 const resources: [Resource, string][] = [
-  ['users', 'Участники'], ['events', 'Мероприятия'], ['teams', 'Команды'], ['challenges', 'Челленджи'],
+  ['users', 'Участники'], ['events', 'Встречи'], ['teams', 'Команды'], ['challenges', 'Челленджи'],
   ['news', 'Новости'], ['feedback', 'Обратная связь'], ['books', 'Библиотека'], ['rules', 'Кодекс сообщества'],
 ];
 const router = createRouter({

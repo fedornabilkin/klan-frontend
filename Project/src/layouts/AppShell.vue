@@ -22,7 +22,7 @@ const navigation = [
     { to: '/teams', title: 'Команды', icon: 'shield-halved' },
   ] },
   { title: 'ДЕЙСТВУЙ', links: [
-    { to: '/events', title: 'Мероприятия', icon: 'calendar-days' },
+    { to: '/events', title: 'Встречи', icon: 'calendar-days' },
     { to: '/challenges', title: 'Челленджи', icon: 'fire' },
   ] },
   { title: 'СООБЩЕСТВО', links: [
@@ -49,10 +49,8 @@ async function logout() {
 .app-shell
   button.mobile-backdrop(v-if="menuOpen" aria-label="Закрыть меню" @click="menuOpen = false")
   aside.sidebar(:class="{ 'is-open': menuOpen }")
-    RouterLink.brand(to="/" @click="menuOpen = false" aria-label="Klan — главная")
-      img.brand-mark(src="@/assets/klan-logo.jpg" width="42" height="42" alt="")
-      .brand-word KLAN
-        span ЛЮДИ. ДЕЛО. ХАРАКТЕР.
+    RouterLink.brand(to="/" @click="menuOpen = false" aria-label="Клан — главная")
+      img.brand-mark(src="@/assets/klan-wordmark.jpg" width="144" height="36" alt="")
     .sidebar-inner
       nav.main-nav(aria-label="Основная навигация")
         .nav-group(v-for="group in navigation" :key="group.title")
@@ -82,7 +80,7 @@ async function logout() {
         button.icon-button.mobile-menu(aria-label="Открыть меню" :aria-expanded="menuOpen" @click="menuOpen = !menuOpen")
           Icon(name="bars")
         nav.breadcrumbs(aria-label="Хлебные крошки")
-          RouterLink(to="/") Klan
+          RouterLink(to="/") Главная
           Icon(name="chevron-right")
           template(v-if="route.path.startsWith('/admin/')")
             RouterLink(to="/admin") Управление

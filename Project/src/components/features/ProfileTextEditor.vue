@@ -12,6 +12,7 @@ const emit = defineEmits<{ saved: [user: User] }>();
 const editing = ref(false); const draft = ref(''); const busy = ref(false); const error = ref('');
 const isName = computed(() => props.field === 'name');
 const label = computed(() => isName.value ? 'Имя и фамилия' : 'О себе');
+const bioPrompt = 'Чем занимаешься? С чем к тебе можно обратиться? Что ищешь сам?';
 function start() { draft.value = props.user[props.field]; error.value = ''; editing.value = true; }
 function cancel() { if (!busy.value) { editing.value = false; error.value = ''; } }
 watch(() => props.user.id, () => { editing.value = false; error.value = ''; });
@@ -42,7 +43,7 @@ async function save() {
     </div>
     <form v-if="editing" class="inline-form" @submit.prevent="save">
       <label :for="`profile-${field}-${user.id}`">{{ label }}</label>
-      <NInput v-model:value="draft" :input-props="{ id: `profile-${field}-${user.id}`, 'aria-label': label }" :type="isName ? 'text' : 'textarea'" :maxlength="isName ? 120 : 5000" :autosize="isName ? undefined : { minRows: 4, maxRows: 12 }" :disabled="busy" :placeholder="isName ? 'Как к вам обращаться' : 'Чем занимаетесь и что хотите рассказать о себе'" />
+      <NInput v-model:value="draft" :input-props="{ id: `profile-${field}-${user.id}`, 'aria-label': label }" :type="isName ? 'text' : 'textarea'" :maxlength="isName ? 120 : 5000" :autosize="isName ? undefined : { minRows: 4, maxRows: 12 }" :disabled="busy" :placeholder="isName ? 'Как к вам обращаться' : bioPrompt" />
       <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
       <div class="inline-actions">
         <NButton :disabled="busy" @click="cancel">Отмена</NButton>
@@ -53,7 +54,7 @@ async function save() {
       <h1><UserAvatar :user="user" /></h1>
       <NButton v-if="editable" quaternary circle aria-label="Изменить имя" @click="start"><template #icon><Icon name="pen" /></template></NButton>
     </div>
-    <p v-else class="profile-bio"><ProfileLinkedText :text="user.bio || 'Участник пока не рассказал о себе.'" :telegram-username="user.username" /></p>
+    <p v-else class="profile-bio"><ProfileLinkedText :text="user.bio || (editable ? bioPrompt : 'Участник пока не рассказал о себе.')" :telegram-username="user.username" /></p>
   </div>
 </template>
 

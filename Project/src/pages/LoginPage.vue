@@ -156,9 +156,8 @@ onUnmounted(() => { disposed = true; controller.abort(); stopPolling(); });
 <template lang="pug">
 .login-page
   header.login-topbar
-    a.login-brand(href="/" aria-label="КЛАН — главная")
-      img.login-brand__mark(src="@/assets/klan-logo.jpg" width="40" height="40" alt="")
-      span КЛАН
+    a.login-brand(href="/" aria-label="Клан — главная")
+      img.brand-mark(src="@/assets/klan-wordmark.jpg" width="144" height="36" alt="")
     span.login-topbar__label Закрытое сообщество
   main.login-main
     section.login-story
@@ -168,9 +167,7 @@ onUnmounted(() => { disposed = true; controller.abort(); stopPolling(); });
       h1 СВОИ.
         br
         span РЯДОМ.
-      p.login-intro Люди, на которых можно положиться.
-        br
-        | Общие цели. Настоящие дела.
+      p.login-intro Здесь можно найти клановцев в своём городе, собраться на встречу и присоединиться к челленджу.
       .login-values
         .login-value
           Icon(name="mountain-sun")
@@ -264,8 +261,7 @@ onUnmounted(() => { disposed = true; controller.abort(); stopPolling(); });
 .login-page::before { content: ''; pointer-events: none; position: absolute; inset: 0; background: radial-gradient(ellipse at 12% 55%, #4a44251c, transparent 48%), repeating-linear-gradient(0deg, transparent, transparent 4.98rem, #ffffff02 5rem), repeating-linear-gradient(90deg, transparent, transparent 4.98rem, #ffffff02 5rem); }
 .login-topbar, .login-footer { position: relative; max-width: 75rem; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
 .login-topbar { height: 6rem; border-bottom: 1px solid #ffffff0b; }
-.login-brand { display: flex; align-items: center; gap: .7rem; color: #eceee7; text-decoration: none; font-size: 1.7rem; font-weight: 900; letter-spacing: .075em; }
-.login-brand__mark { width: 2.5rem; height: 2.5rem; border-radius: .45rem; }
+.login-brand { display: inline-flex; align-items: center; }
 .login-topbar__label { font-size: .63rem; color: #7c8378; letter-spacing: .06em; text-transform: uppercase; }
 .login-main { position: relative; max-width: 67rem; margin: 0 auto; padding: 2rem 0 3rem; display: grid; gap: 2rem; }
 .login-story { position: relative; padding: 1rem 0 0; }
