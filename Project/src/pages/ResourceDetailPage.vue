@@ -22,6 +22,7 @@ import ProfileIdentityEditor from '@/components/features/ProfileIdentityEditor.v
 import ProfileLocationEditor from '@/components/features/ProfileLocationEditor.vue';
 import ProfileTagsSection from '@/components/features/ProfileTagsSection.vue';
 import ProfileEntriesSection from '@/components/features/ProfileEntriesSection.vue';
+import ProfileSessions from '@/components/features/ProfileSessions.vue';
 import EntityEditorModal from '@/components/features/EntityEditorModal.vue';
 import EventItemsModal from '@/components/features/EventItemsModal.vue';
 import ChallengeJoinModal from '@/components/features/ChallengeJoinModal.vue';
@@ -168,6 +169,7 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
               p(v-if="team.description") {{ team.description }}
               p.profile-team-empty(v-else) У команды пока нет описания.
           p.profile-team-empty(v-else) {{ isOwn ? 'Вы пока не состоите в активной команде.' : 'Пока не состоит в активной команде.' }}
+        ProfileSessions(v-if="isOwn" :key="user.id")
       aside.detail-side
         section.detail-panel
           h2 В движении
