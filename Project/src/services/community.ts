@@ -1,5 +1,5 @@
-import type { ApiResponse, Dashboard, ListResponse, Resource, Statistics, Tag } from '@shared/contracts';
-import { buildActivity, buildResource, buildTag, CommunityEntity, EntityBuilder, object, UserModel } from '@/domain/builders';
+import type { ApiResponse, Dashboard, Entity, LikeSummary, ListResponse, Resource, Statistics, Tag } from '@shared/contracts';
+import { buildActivity, buildLikeSummary, buildResource, buildTag, CommunityEntity, EntityBuilder, object, UserModel } from '@/domain/builders';
 import { api, type Query } from './api';
 
 export const communityService = {
@@ -15,6 +15,14 @@ export const communityService = {
   async get(resource: Resource, id: string, signal?: AbortSignal): Promise<UserModel | CommunityEntity> {
     const response = await api.get<ApiResponse<unknown>>(`/${resource}/${encodeURIComponent(id)}`, {view: 'detail'}, signal);
     return buildResource(resource, response.data);
+  },
+  async setFeedbackStatus(id: string, status: string): Promise<string> {
+    const {data} = await api.patch<ApiResponse<{status: string}>>(`/feedback/${encodeURIComponent(id)}`, {status});
+    return data.status;
+  },
+  async setEntityLike(entity: Pick<Entity, 'type' | 'id'>, liked: boolean): Promise<LikeSummary> {
+    const {data} = await api.put<ApiResponse<LikeSummary>>(`/${entity.type}/${encodeURIComponent(entity.id)}/like`, {liked});
+    return buildLikeSummary(data);
   },
   async tagUsage(signal?: AbortSignal) {
     const response = await api.get<ApiResponse<unknown[]>>('/tags', {usage:1}, signal);

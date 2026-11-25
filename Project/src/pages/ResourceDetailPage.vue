@@ -14,9 +14,7 @@ import { detailBreadcrumb } from '@/composables/useDetailBreadcrumb';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
 import EntityTitle from '@/components/ui/EntityTitle.vue';
-import EntityLikeButton from '@/components/features/EntityLikeButton.vue';
-import StatusBadge from '@/components/ui/StatusBadge.vue';
-import { feedbackStatuses } from '@/domain/entityStatus';
+import FeedbackCard from '@/components/features/FeedbackCard.vue';
 import ChallengeMetric from '@/components/ui/ChallengeMetric.vue';
 import ProfileTextEditor from '@/components/features/ProfileTextEditor.vue';
 import ProfileIdentityEditor from '@/components/features/ProfileIdentityEditor.vue';
@@ -48,27 +46,11 @@ const ended=computed(()=>entity.value?.status==='archived'||entity.value?.status
 const eventFull = computed(() => resource.value === 'events' && entity.value?.capacity != null && entity.value.participants.length >= entity.value.capacity);
 const started=computed(()=>!entity.value?.schedule || entity.value.schedule.start.slice(0,10)<=new Date().toISOString().slice(0,10));
 const standings=computed(()=>challengeStandings(entity.value));
-const createdFormat = new Intl.DateTimeFormat('ru-RU', {dateStyle: 'long', timeStyle: 'short'});
-const createdLabel = computed(() => {
-  const time = Date.parse(entity.value?.createdAt ?? '');
-  return Number.isFinite(time) ? createdFormat.format(time) : '';
-});
-async function changeFeedbackStatus(event: Event) {
-  const select = event.target as HTMLSelectElement;
-  const item = entity.value, status = select.value;
-  select.value = item.status;
-  if (!auth.isAdmin || busy.value || status === item.status) return;
-  busy.value = true;
-  actionError.value = '';
-  try {
-    const {data} = await api.patch<ApiResponse<Entity>>(`/feedback/${encodeURIComponent(item.id)}`, {status});
-    if (record.value?.id === item.id && resource.value === 'feedback') {
-      controller?.abort();
-      record.value = {...entity.value, status: data.status};
-    }
-  } catch (cause) {
-    if (record.value?.id === item.id) actionError.value = cause instanceof Error ? cause.message : 'Не удалось изменить статус заявки';
-  } finally { busy.value = false; }
+function feedbackStatusChanged(itemId: string, status: string) {
+  if (resource.value === 'feedback' && record.value?.id === itemId) {
+    controller?.abort();
+    record.value = {...entity.value, status};
+  }
 }
 const ownTotal=computed(()=>standings.value.people.find(row=>row.user.id===auth.user?.id)?.score ?? 0);
 let controller:AbortController|undefined;
@@ -203,7 +185,8 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
     .action-error(v-if="actionError" role="alert") {{ actionError }}
     .detail-columns
       .detail-main
-        section.detail-panel
+        FeedbackCard(v-if="resource === 'feedback'" :key="entity.id" :entity="entity" @status-changed="feedbackStatusChanged")
+        section.detail-panel(v-else)
           .details-heading
             h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
             span.challenge-participation(v-if="['teams', 'events'].includes(resource) && participant")
@@ -215,18 +198,6 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
               | Участвую
           p.prose {{ entity.description }}
           p.prose(v-if="entity.content") {{ entity.content }}
-          .feedback-info(v-if="resource === 'feedback'")
-            .feedback-info-field
-              span Создана · ваше время
-              time(v-if="createdLabel" :datetime="entity.createdAt") {{ createdLabel }}
-              span(v-else) Дата не указана
-            .feedback-info-field
-              label(v-if="auth.isAdmin" for="feedback-status") Статус заявки
-              span(v-else) Статус заявки
-              select#feedback-status(v-if="auth.isAdmin" :value="entity.status" :disabled="busy" @change="changeFeedbackStatus")
-                option(v-for="choice in feedbackStatuses" :key="choice.value" :value="choice.value") {{ choice.label }}
-              StatusBadge(v-else :status="entity.status")
-            EntityLikeButton(v-if="entity.likes" :key="entity.id" :entity="entity" :summary="entity.likes")
           .profile-tags(v-if="entity.tags.length")
             span(v-for="tag in entity.tags" :key="tag.id") {{ tag.name }}
           TeamChallengeProgress(v-if="resource === 'teams'" :key="entity.id" :active="entity.activeTeamChallenges" :finished="entity.teamChallenges")
@@ -343,10 +314,6 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
 </template>
 
 <style scoped>
-.feedback-info{display:flex;flex-wrap:wrap;align-items:center;gap:.9rem 2rem;margin-top:1.2rem;padding-top:1rem;border-top:1px solid var(--border)}
-.feedback-info-field{display:grid;justify-items:start;gap:.4rem;font-size:.85rem}
-.feedback-info-field>:first-child{color:var(--muted);font-size:.74rem}
-.feedback-info select{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--border);border-radius:.4rem;padding:.4rem .6rem;cursor:pointer}
 .finished-metrics{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .85rem}
 
 .team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}

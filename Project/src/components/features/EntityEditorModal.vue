@@ -2,7 +2,7 @@
 import EventOrganizerField from './EventOrganizerField.vue';
 import CountryCityEditor from './CountryCityEditor.vue'
 import { changedTelegramUsername } from '@/domain/profile-identity'
-import { feedbackStatuses } from '@/domain/entityStatus'
+import FeedbackStatusButtons from './FeedbackStatusButtons.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
@@ -37,9 +37,7 @@ const savedGoal = computed(() => props.entity && 'goal' in props.entity ? props.
 const originalFraction = computed(() => savedGoal.value?.category === form.value.category && savedGoal.value.goal?.target === form.value.target && !Number.isInteger(form.value.target))
 const hasLocation = computed(() => ['users', 'events'].includes(props.resource))
 const tagOptions = computed(() => tags.value.map(tag => ({ label: tag.name, value: tag.id })))
-const statusOptions = computed(() => (props.resource === 'feedback'
-  ? feedbackStatuses
-  : props.resource === 'teams'
+const statusOptions = computed(() => (props.resource === 'teams'
     ? [{ label: 'Активна', value: 'active' }, { label: 'Архив', value: 'archived' }]
     : ['events', 'challenges'].includes(props.resource)
       ? [{ label: 'Скоро', value: 'upcoming' }, { label: 'Активно', value: 'active' }, { label: 'Завершено', value: 'completed' }, { label: 'Архив', value: 'archived' }]
@@ -180,7 +178,8 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
     template(v-if="!isUser")
       .editor-columns
         NFormItem(v-if="canSetStatus" label="Статус")
-          NSelect(v-model:value="form.status" :options="statusOptions")
+          FeedbackStatusButtons(v-if="resource === 'feedback'" :status="form.status" :busy="busy" show-current @select="form.status = $event")
+          NSelect(v-else v-model:value="form.status" :options="statusOptions")
         NFormItem(label="Категория")
           NSelect(v-if="categoryOptions.length" :value="form.category" :options="categoryOptions" @update:value="changeCategory")
           NInput(v-else v-model:value="form.category" placeholder="Например, развитие")

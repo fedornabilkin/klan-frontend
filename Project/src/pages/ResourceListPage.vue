@@ -12,6 +12,8 @@ import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import PageHeader from '@/components/ui/PageHeader.vue';
 import ResourceCard from '@/components/features/ResourceCard.vue';
+import FeedbackCard from '@/components/features/FeedbackCard.vue';
+import { CommunityEntity } from '@/domain/builders';
 import CommunityTagFilter from '@/components/features/CommunityTagFilter.vue';
 import EntityEditorModal from '@/components/features/EntityEditorModal.vue';
 import { resourceMeta } from '@/components/features/resourceMeta';
@@ -26,6 +28,14 @@ const showEditor = ref(false);
 const sortOptions = computed(() => [{ label: 'Сначала новые', value: '-createdAt' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · А—Я`, value: 'name' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · Я—А`, value: '-name' }]);
 const statuses = computed(() => resource.value === 'feedback' ? [{label:'Все статусы',value:''},{label:'Новые',value:'open'},{label:'В работе',value:'in_progress'},{label:'Решённые',value:'resolved'},{label:'Закрытые',value:'closed'}] : resource.value === 'teams' ? [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Архив',value:'archived'}] : [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Скоро',value:'upcoming'},{label:'Завершённые',value:'completed'},{label:'Архив',value:'archived'}]);
 const selectedTags = computed({ get: () => parseTagFilter(filters.tag), set: (value: string[]) => { filters.tag = formatTagFilter(value); } });
+function feedbackStatusChanged(id: string, status: string) {
+  if (resource.value !== 'feedback') return;
+  if (route.query.status && route.query.status !== status) {
+    void refresh();
+    return;
+  }
+  items.value = items.value.map(item => item.id === id && 'type' in item ? new CommunityEntity({...item, status}) : item);
+}
 watch([tags, selectedTags], ([catalog, selected]) => {
   if (catalog.length && selected.length) filters.tag = formatTagFilter(canonicalTagNames(selected, catalog));
 });
@@ -70,7 +80,9 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
   .resource-grid(v-else-if="loading")
     NSkeleton(v-for="n in 6" :key="n" height="17rem" style="border-radius:1rem")
   .resource-grid(v-else-if="items.length")
-    ResourceCard(v-for="item in items" :key="item.id" :item="item" :resource="resource" :tag-counts="tagCounts")
+    template(v-for="item in items" :key="item.id")
+      FeedbackCard(v-if="'type' in item && item.type === 'feedback'" :entity="item" preview @status-changed="feedbackStatusChanged")
+      ResourceCard(v-else :item="item" :resource="resource" :tag-counts="tagCounts")
   .list-empty(v-else)
     EmptyState(title="Ничего не нашлось" description="Попробуйте другое слово или уберите часть фильтров." icon="magnifying-glass")
     NButton(@click="clearFilters") Сбросить фильтры

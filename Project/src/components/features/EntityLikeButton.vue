@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { ApiResponse, Entity, LikeSummary } from '@shared/contracts';
+import type { Entity, LikeSummary } from '@shared/contracts';
 import Icon from '@/components/ui/Icon.vue';
-import { buildLikeSummary } from '@/domain/builders';
-import { api, errorMessage } from '@/services/api';
+import { errorMessage } from '@/services/api';
+import { communityService } from '@/services/community';
 
 const props = defineProps<{ entity: Pick<Entity, 'id' | 'type'>; summary: LikeSummary }>();
 const current = ref(props.summary);
 const busy = ref(false);
 const error = ref('');
+let version = 0;
+watch([() => props.entity.type, () => props.entity.id], () => {
+  version++;
+  current.value = props.summary;
+  busy.value = false;
+  error.value = '';
+});
 watch(() => props.summary, summary => { current.value = summary; });
 async function toggle() {
   if (busy.value) return;
-  const {id, type} = props.entity;
+  const targetVersion = version;
   busy.value = true;
   error.value = '';
   try {
-    const {data} = await api.put<ApiResponse<LikeSummary>>(`/${type}/${encodeURIComponent(id)}/like`, {liked: !current.value.liked});
-    if (props.entity.id === id) current.value = buildLikeSummary(data);
-  } catch (cause) { if (props.entity.id === id) error.value = errorMessage(cause); }
-  finally { busy.value = false; }
+    const summary = await communityService.setEntityLike(props.entity, !current.value.liked);
+    if (version === targetVersion) current.value = summary;
+  } catch (cause) { if (version === targetVersion) error.value = errorMessage(cause); }
+  finally { if (version === targetVersion) busy.value = false; }
 }
 </script>
 
