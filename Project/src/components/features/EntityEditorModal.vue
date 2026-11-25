@@ -2,6 +2,7 @@
 import EventOrganizerField from './EventOrganizerField.vue';
 import CountryCityEditor from './CountryCityEditor.vue'
 import { changedTelegramUsername } from '@/domain/profile-identity'
+import { feedbackStatuses } from '@/domain/entityStatus'
 import SearchSelect from '@/components/ui/SearchSelect.vue';
 import { computed, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NButton, NAlert, NFormItem } from 'naive-ui'
@@ -22,6 +23,8 @@ const form = ref({ title: '', description: '', clanJoinedOn: '', content: '', st
 const entrySections = [{ field: 'facts', label: 'Факты', addLabel: 'Добавить факт' }, { field: 'achievements', label: 'Достижения', addLabel: 'Добавить достижение' }] as const
 type EntryField = typeof entrySections[number]['field']
 const isUser = computed(() => props.resource === 'users')
+const canSetStatus = computed(() => props.resource === 'feedback' ? auth.isAdmin : auth.can('content.manage'))
+const initialStatus = ref<string>()
 const profile = computed(() => props.entity && 'name' in props.entity ? props.entity : undefined)
 const usernameChanged = computed(() => normalizeTelegramUsername(form.value.username) !== normalizeTelegramUsername(profile.value?.username ?? ''))
 const coordinatesLocked = ref(false)
@@ -35,7 +38,7 @@ const originalFraction = computed(() => savedGoal.value?.category === form.value
 const hasLocation = computed(() => ['users', 'events'].includes(props.resource))
 const tagOptions = computed(() => tags.value.map(tag => ({ label: tag.name, value: tag.id })))
 const statusOptions = computed(() => (props.resource === 'feedback'
-  ? [{ label: 'Новое', value: 'open' }, { label: 'В работе', value: 'in_progress' }, { label: 'Решено', value: 'resolved' }, { label: 'Закрыто', value: 'closed' }]
+  ? feedbackStatuses
   : props.resource === 'teams'
     ? [{ label: 'Активна', value: 'active' }, { label: 'Архив', value: 'archived' }]
     : ['events', 'challenges'].includes(props.resource)
@@ -68,6 +71,7 @@ watch(() => props.show, async show => {
   error.value = ''
   const entity = props.entity
   const item = entity && 'title' in entity ? entity : undefined
+  initialStatus.value = item?.status
   const user = entity && 'name' in entity ? entity : undefined
   coordinatesLocked.value = !!user?.location.city && user.location.lat != null && user.location.lng != null
   form.value = {
@@ -138,7 +142,7 @@ async function save() {
         ...(props.entity && 'name' in props.entity && f.clanJoinedOn !== (props.entity.clanJoinedOn ?? '') && { clanJoinedOn:f.clanJoinedOn || null }),
         facts: f.facts.map(entry => ({ ...entry })), achievements: f.achievements.map(entry => ({ ...entry })) }
     : {
-        title: f.title.trim(), description: f.description, content: f.content, ...(auth.can('content.manage') ? { status: f.status } : {}), category: f.category, tags: selectedTags,
+        title: f.title.trim(), description: f.description, content: f.content, ...(canSetStatus.value && f.status !== initialStatus.value ? { status: f.status } : {}), category: f.category, tags: selectedTags,
       ...(hasDates.value ? { schedule: { start: new Date(f.start).toISOString(), end: new Date(f.end).toISOString() } } : {}),
       ...(hasLocation.value ? { location } : {}),
       ...(props.resource === 'teams' ? { motto: f.motto } : {}),
@@ -175,7 +179,7 @@ NModal(:show="show" preset="card" :title="entity ? 'Редактировать �
       NInput(v-model:value="form.description" type="textarea" :rows="3" :maxlength="5000")
     template(v-if="!isUser")
       .editor-columns
-        NFormItem(v-if="auth.can('content.manage')" label="Статус")
+        NFormItem(v-if="canSetStatus" label="Статус")
           NSelect(v-model:value="form.status" :options="statusOptions")
         NFormItem(label="Категория")
           NSelect(v-if="categoryOptions.length" :value="form.category" :options="categoryOptions" @update:value="changeCategory")

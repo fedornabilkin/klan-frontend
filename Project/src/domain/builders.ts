@@ -167,7 +167,15 @@ function buildPendingResult(value: unknown, person: (value: unknown) => User, te
   return { user: person(dto.user), value: amount, team: team(dto.team), sourceCell, reason };
 }
 
+export function buildLikeSummary(value: unknown): NonNullable<Entity['likes']> {
+  const dto = object(value, 'likes');
+  const count = number(dto.count, 'likes.count');
+  if (!Number.isSafeInteger(count) || count < 0 || typeof dto.liked !== 'boolean') throw new InvalidDtoError('likes');
+  return { count, liked: dto.liked };
+}
+
 export class CommunityEntity implements Entity {
+  likes?: Entity['likes'];
   id!: string; type!: Entity['type']; title!: string; description!: string; status!: string; category!: string;
   tags!: Tag[]; createdAt!: string; location?: Location; schedule?: Entity['schedule']; cover?: string;
   teamChallenges?: Entity['teamChallenges'];
@@ -213,6 +221,7 @@ export class EntityBuilder {
       description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', 'active'),
       category: string(dto.category, 'entity.category', ''), tags: array(dto.tags, buildTag, 'entity.tags'),
       createdAt: string(dto.createdAt, 'entity.createdAt', ''),
+      likes: dto.likes == null ? undefined : buildLikeSummary(dto.likes),
       location: dto.location == null ? undefined : buildLocation(dto.location),
       schedule: schedule ? { start: string(schedule.start, 'schedule.start'), end: string(schedule.end, 'schedule.end') } : undefined,
       cover: dto.cover == null ? undefined : string(dto.cover, 'entity.cover'),

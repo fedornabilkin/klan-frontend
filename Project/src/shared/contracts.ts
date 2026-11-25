@@ -31,7 +31,9 @@ export interface Participation { user: User; teamRole?: TeamRole; team?: { id: s
 export interface ChallengeResult { user: User; date: string; value: number; team?: { id: string; publicId?: number; title: string } }
 /** Imported values without a confirmed date are excluded from all result totals. */
 export interface ChallengePendingResult { user: User; value: number; team?: { id: string; publicId?: number; title: string }; sourceCell: string; reason: string }
+export interface LikeSummary { count: number; liked: boolean }
 export interface Entity {
+  likes?: LikeSummary;
   publicId?: number; participantCount?: number; teamCount?: number; readerCount?: number;
   id: string; type: Exclude<Resource, 'users'>; title: string; description: string;
   status: string; category: string; tags: Tag[]; createdAt: string;

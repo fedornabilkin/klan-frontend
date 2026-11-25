@@ -3,3 +3,5 @@ const labels: Record<string, string> = { active: 'Активно', archive: 'А�
 export function statusLabel(status: string) {
   return labels[status] ?? status;
 }
+
+export const feedbackStatuses = ['open', 'in_progress', 'resolved', 'closed'].map(value => ({ value, label: statusLabel(value) }));

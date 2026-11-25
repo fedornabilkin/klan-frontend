@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { RouterLink } from 'vue-router';
 import { userPath } from '@shared/user-links';
 import type { Entity, Resource, User } from '@shared/contracts';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
 import ChallengeMetric from '@/components/ui/ChallengeMetric.vue';
+import EntityLikeButton from './EntityLikeButton.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import { categoryLabels, dateLabel, resourceMeta } from './resourceMeta';
 import { rankMemberTags } from '@/domain/tagPopularity';
 const props = defineProps<{ item: User | Entity; resource: Resource; tagCounts?: ReadonlyMap<string, number> }>();
 const user = computed(() => props.item as User);
 const entity = computed(() => props.item as Entity);
+const path = computed(() => props.resource === 'users' ? userPath(user.value) : `/${props.resource}/${props.item.publicId ?? props.item.id}`);
 const title = computed(() => props.resource === 'users' ? user.value.name : entity.value.title);
 const coverClass = computed(() => `${props.resource}-${(props.item.id.charCodeAt(props.item.id.length - 1) || 0) % 3}`);
 const memberTags = computed(() => rankMemberTags(user.value.tags, props.tagCounts ?? new Map()));
@@ -18,7 +21,7 @@ const remainingTags = computed(() => memberTags.value.slice(3));
 </script>
 
 <template lang="pug">
-RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resource}/${item.publicId ?? item.id}`" :class="{ 'resource-card--person': resource === 'users', 'resource-card--book': resource === 'books' }")
+component.resource-card(:is="entity.likes ? 'article' : RouterLink" v-bind="entity.likes ? {} : {to: path}" :class="{ 'resource-card--person': resource === 'users', 'resource-card--book': resource === 'books' }")
   template(v-if="resource === 'users'")
     .person-heading
       h3
@@ -52,7 +55,9 @@ RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resour
       .card-date(v-if="entity.schedule")
         Icon(name="calendar")
         span {{ dateLabel(entity.schedule.start) }}{{ resource === 'challenges' ? ` — ${dateLabel(entity.schedule.end)}` : '' }}
-      h3 {{ title }}
+      h3(v-if="entity.likes")
+        RouterLink.card-title-link(:to="path") {{ title }}
+      h3(v-else) {{ title }}
       p.card-description {{ entity.description }}
       .card-tags(v-if="entity.tags.length")
         span(v-for="tag in entity.tags.slice(0, 3)" :key="tag.id") {{ tag.name }}
@@ -68,10 +73,15 @@ RouterLink.resource-card(:to="resource === 'users' ? userPath(user) : `/${resour
           Icon(name="book-open")
           | Прочитали {{ entity.readerCount ?? entity.readers?.length ?? 0 }}
         span(v-else) {{ dateLabel(entity.createdAt) }}
-        Icon(name="arrow-right")
+        EntityLikeButton(v-if="entity.likes" :entity="entity" :summary="entity.likes")
+        Icon(v-else name="arrow-right")
 </template>
 
 <style scoped>
+article.resource-card{position:relative}
+.card-title-link{color:inherit;text-decoration:none}
+.card-title-link::after{content:'';position:absolute;inset:0}
+.card-footer :deep(.entity-like){z-index:1}
 .card-challenge-metrics{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .95rem}
 .team-card.card-body{padding:1rem 1.15rem}.team-card .card-description{margin-bottom:.6rem}.team-card-count{margin-top:auto;color:#aaa4a1;font-size:.76rem}
 .person-heading{gap:.6rem;flex-wrap:wrap}.person-heading h3{margin:0;min-width:0}
