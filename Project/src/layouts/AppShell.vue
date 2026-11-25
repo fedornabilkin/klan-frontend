@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { subscribeRealtime } from '@/services/realtime'
 import Icon from '@/components/ui/Icon.vue'
 import UserAvatar from '@/components/ui/UserAvatar.vue'
 import HeaderOnline from '@/components/features/HeaderOnline.vue'
@@ -11,6 +12,12 @@ import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+onScopeDispose(subscribeRealtime(async event => {
+  if (event.type !== 'invalidate' || event.resource !== 'access-settings') return
+  await auth.restore(true)
+  if (!auth.user) await router.replace({name:'login'})
+  else if (route.meta.admin && !auth.isAdmin) await router.replace({name:'dashboard'})
+}))
 const menuOpen = ref(false)
 const loggingOut = ref(false)
 const logoutError = ref('')

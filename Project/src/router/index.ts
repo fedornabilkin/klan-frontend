@@ -22,6 +22,7 @@ const router = createRouter({
         ]),
         { path: 'stats', name: 'stats', component: () => import('@/pages/StatsPage.vue'), meta: { title: 'Статистика' } },
         { path: 'admin', name: 'admin', component: () => import('@/pages/AdminPage.vue'), meta: { title: 'Управление', capability: 'content.manage' } },
+        { path: 'admin/access', name: 'access-settings', component: () => import('@/pages/AccessSettingsPage.vue'), meta: { title: 'Постоянный доступ', admin: true } },
         { path: 'admin/catalogs', name: 'catalogs', component: () => import('@/pages/CatalogAdminPage.vue'), meta: { title: 'Справочники', capability: 'catalog.manage' } },
         { path: 'admin/analytics', name: 'analytics', component: () => import('@/pages/AnalyticsPage.vue'), meta: { title: 'Аналитика', capability: 'analytics.read' } },
         { path: 'profile/import', name: 'import', component: () => import('@/pages/ImportPage.vue'), meta: { title: 'Мои данные' } },

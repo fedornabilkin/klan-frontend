@@ -62,6 +62,7 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
   NAlert(v-if="!auth.can('content.manage')" type="error" title="Доступ ограничен") Этот раздел доступен редакторам сообщества.
   template(v-else)
     .admin-links
+      RouterLink(v-if="auth.isAdmin" to="/admin/access") Постоянный доступ
       RouterLink(v-if="auth.can('catalog.manage')" to="/admin/catalogs") Справочники тегов и предметов
       RouterLink(v-if="auth.can('analytics.read')" to="/admin/analytics") Аналитика сообщества и участников
     .admin-toolbar
