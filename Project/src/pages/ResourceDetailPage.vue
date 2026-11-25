@@ -169,7 +169,6 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
               p(v-if="team.description") {{ team.description }}
               p.profile-team-empty(v-else) У команды пока нет описания.
           p.profile-team-empty(v-else) {{ isOwn ? 'Вы пока не состоите в активной команде.' : 'Пока не состоит в активной команде.' }}
-        ProfileSessions(v-if="isOwn" :key="user.id")
       aside.detail-side
         section.detail-panel
           h2 В движении
@@ -188,6 +187,7 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
           h3 Ваши данные — с вами
           p Сохраните профиль или перенесите информацию из JSON.
           RouterLink(to="/profile/import") Импорт и экспорт
+        ProfileSessions(v-if="isOwn" :key="user.id")
   template(v-else-if="record")
     .action-error(v-if="actionError" role="alert") {{ actionError }}
     .detail-columns
