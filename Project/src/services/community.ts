@@ -3,14 +3,14 @@ import { buildActivity, buildResource, buildTag, CommunityEntity, EntityBuilder,
 import { api, type Query } from './api';
 
 export const communityService = {
-  async list(resource: Resource, query?: Query, signal?: AbortSignal): Promise<ListResponse<UserModel | CommunityEntity>> {
+  async list(resource: Resource | 'admin/users', query?: Query, signal?: AbortSignal): Promise<ListResponse<UserModel | CommunityEntity>> {
     const response = await api.get<ListResponse<unknown>>(`/${resource}`, query, signal);
     if (!Array.isArray(response.data)) throw new Error('Некорректный список в ответе сервера.');
     const meta = object(response.meta, 'meta');
     for (const key of ['page', 'limit', 'total', 'pages']) {
       if (typeof meta[key] !== 'number' || !Number.isFinite(meta[key]) || (meta[key] as number) < 0) throw new Error('Некорректная пагинация сервера.');
     }
-    return { data: response.data.map(dto => buildResource(resource, dto)), meta: response.meta };
+    return { data: response.data.map(dto => buildResource(resource === 'admin/users' ? 'users' : resource, dto)), meta: response.meta };
   },
   async get(resource: Resource, id: string, signal?: AbortSignal): Promise<UserModel | CommunityEntity> {
     const response = await api.get<ApiResponse<unknown>>(`/${resource}/${encodeURIComponent(id)}`, {view: 'detail'}, signal);

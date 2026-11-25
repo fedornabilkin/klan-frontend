@@ -3,27 +3,30 @@ import { useRoute, useRouter, type LocationQuery } from 'vue-router';
 import type { ListMeta, Resource } from '@shared/contracts';
 import type { CommunityEntity, UserModel } from '@/domain/builders';
 import { communityService } from '@/services/community';
+import { selectedMemberFilters } from '@/domain/adminMemberFilters';
 import { errorMessage } from '@/services/api';
 import { useRealtime } from './useRealtime';
 
 import { searchTerm, useFilterDelay } from './useFilterDelay';
 
-export interface ListFilters { q: string; sort: string; status: string; category: string; tag: string; city: string }
-const keys = ['q', 'sort', 'status', 'category', 'tag', 'city'] as const;
-export function parseFilters(query: LocationQuery, defaultSort = '-createdAt'): ListFilters {
+export interface ListFilters { q: string; sort: string; status: string; category: string; tag: string; city: string; missing: string }
+const keys = ['q', 'sort', 'status', 'category', 'tag', 'city', 'missing'] as const;
+export function parseFilters(query: LocationQuery, defaultSort = '-createdAt', adminMembers = false): ListFilters {
   const text = (key: string, fallback = '') => typeof query[key] === 'string' ? query[key] as string : fallback;
-  return { q: searchTerm(text('q')), sort: text('sort', defaultSort), status: text('status'), category: text('category'), tag: text('tag'), city: text('city') };
+  return { q: searchTerm(text('q')), sort: text('sort', defaultSort), status: text('status'), category: text('category'), tag: text('tag'), city: text('city'),
+    missing: adminMembers ? selectedMemberFilters(text('missing')).join(',') : '' };
 }
 export function parsePage(value: unknown): number {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : 1;
 }
-export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?: MaybeRefOrGetter<number> } = {}) {
+export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?: MaybeRefOrGetter<number>; adminMembers?: boolean } = {}) {
   const route = useRoute();
   const router = useRouter();
   const limit = computed(() => toValue(resource) === 'teams' ? 30 : toValue(options.limit) ?? 12);
   const defaultSort = computed(() => toValue(resource) === 'teams' ? 'name' : '-createdAt');
-  const currentFilters = () => parseFilters(route.query, defaultSort.value);
+  const adminMembers = computed(() => options.adminMembers && toValue(resource) === 'users');
+  const currentFilters = () => parseFilters(route.query, defaultSort.value, adminMembers.value);
   const filters = reactive<ListFilters>(currentFilters());
   const items = shallowRef<(UserModel | CommunityEntity)[]>([]);
   const meta = ref<ListMeta>({ page: 1, pages: 1, limit:limit.value, total: 0 });
@@ -41,7 +44,7 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
     loading.value = true;
     error.value = '';
     try {
-      const result = await communityService.list(toValue(resource), { ...currentFilters(), page: page.value, limit:limit.value, view:'cards' }, abort.signal);
+      const result = await communityService.list(adminMembers.value ? 'admin/users' : toValue(resource), { ...currentFilters(), page: page.value, limit:limit.value, view:'cards' }, abort.signal);
       if (disposed || current !== requestId) return;
       items.value = result.data;
       meta.value = result.meta;
@@ -77,7 +80,11 @@ export function useList(resource: MaybeRefOrGetter<Resource>, options: { limit?:
     void refresh();
   }, { immediate: true });
   useRealtime(message => {
-    if (message.type === 'invalidate' && [toValue(resource), '*'].includes(message.resource)) void refresh();
+    if (message.type !== 'invalidate') return;
+    const missing = adminMembers.value ? selectedMemberFilters(currentFilters().missing) : [];
+    if ([toValue(resource), '*'].includes(message.resource)
+      || (message.resource === 'teams' && missing.includes('teams'))
+      || (message.resource === 'challenges' && (missing.includes('results') || missing.includes('teams')))) void refresh();
   });
   onScopeDispose(() => { disposed = true; abort?.abort(); });
   return { items, meta, loading, error, filters, page, refresh, setPage };

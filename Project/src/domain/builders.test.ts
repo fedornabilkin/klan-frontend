@@ -154,10 +154,16 @@ describe('DTO → Builder → Domain', () => {
 });
 describe('URL and pagination', () => {
   it('restores search, sorting and filters while ignoring array query injection', () => {
-    expect(parseFilters({ q: 'Иван', sort: 'name', tag: 't1,t2', city: ['Москва'] })).toEqual({ q: 'Иван', sort: 'name', tag: 't1,t2', city: '', status: '', category: '' });
+    expect(parseFilters({ q: 'Иван', sort: 'name', tag: 't1,t2', city: ['Москва'] })).toEqual({ q: 'Иван', sort: 'name', tag: 't1,t2', city: '', status: '', category: '', missing: '' });
     expect(parsePage('-1')).toBe(1);
     expect(parsePage('2.2')).toBe(1);
     expect(parsePage('3')).toBe(3);
+  });
+  it('restores only supported member filters and only on the administrative member list', () => {
+    const query = { missing: 'tags,unknown,telegram,tags', page: '2' };
+    expect(parseFilters(query, 'name', true).missing).toBe('telegram,tags');
+    expect(parseFilters(query).missing).toBe('');
+    expect(parseFilters({missing: ['city','bio']}, 'name', true).missing).toBe('');
   });
   it('keeps first, last and current neighbors in classic pagination', () => {
     expect(paginationItems(5, 12)).toEqual([1, 'ellipsis-left', 4, 5, 6, 'ellipsis-right', 12]);

@@ -6,6 +6,7 @@ import { NAlert, NButton, NInput, NSelect, NSkeleton } from 'naive-ui'
 import type { Entity, Resource, User } from '@shared/contracts'
 import { communityService } from '@/services/community'
 import { useList } from '@/composables/useList'
+import { memberFilters, selectedMemberFilters, type MemberFilterKey } from '@/domain/adminMemberFilters'
 import { useAuthStore } from '@/stores/auth'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import Icon from '@/components/ui/Icon.vue'
@@ -27,7 +28,14 @@ const resourceOptions: { label: string; value: Resource }[] = [
 ]
 const resources = computed(() => resourceOptions.filter(item => item.value !== 'users' || auth.can('members.manage')))
 const resource = computed<Resource>(() => resources.value.some(r => r.value === route.query.resource) ? route.query.resource as Resource : resources.value[0]?.value ?? 'events')
-const { items, meta, loading, error, filters, page, refresh, setPage } = useList(resource, { limit: 12 })
+const { items, meta, loading, error, filters, page, refresh, setPage } = useList(resource, { limit: 12, adminMembers: true })
+const selectedFilters = computed(() => selectedMemberFilters(filters.missing))
+function toggleMemberFilter(key: MemberFilterKey) {
+  const next = new Set(selectedFilters.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  filters.missing = selectedMemberFilters([...next].join(',')).join(',')
+}
 const rows = computed(() => items.value as (User | Entity)[])
 const selected = ref<Entity | User | null>(null)
 const editorOpen = ref(false)
@@ -66,12 +74,19 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
         template(#icon)
           Icon(name="plus")
         | Создать
+    fieldset.member-filters(v-if="resource === 'users'")
+      legend Фильтры участников
+      .filter-buttons
+        button.member-filter(v-for="filter in memberFilters" :key="filter.key" type="button" :aria-pressed="selectedFilters.includes(filter.key)" @click="toggleMemberFilter(filter.key)") {{ filter.label }}
+      .filter-summary(v-if="selectedFilters.length")
+        span(v-if="selectedFilters.length > 1") Применяются все выбранные условия
+        button.filter-reset(type="button" @click="filters.missing = ''") Сбросить фильтры
     NAlert(v-if="error" type="error" :title="error")
       NButton(size="small" @click="refresh") Повторить
     .admin-table-wrap(v-else)
       .admin-table-head
         span {{ resources.find(r => r.value === resource)?.label }}
-        span {{ meta.total }} записей
+        span(v-if="!loading" role="status") Найдено: {{ meta.total }}
       template(v-if="loading")
         NSkeleton(v-for="i in 5" :key="i" height="4.5rem" style="margin: 1rem; width: calc(100% - 2rem)")
       template(v-else-if="rows.length")
@@ -79,7 +94,7 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
           .admin-row-main
             UserAvatar(v-if="'name' in entity" :user="entity")
             RouterLink.admin-title(v-else :to="`/${resource}/${entity.publicId ?? entity.id}`") {{ titleOf(entity) }}
-            p {{ descriptionOf(entity) || 'Описание не добавлено' }}
+            p {{ descriptionOf(entity) || ('name' in entity ? 'Город не указан' : 'Описание не добавлено') }}
           StatusBadge(v-if="'status' in entity" :status="entity.status")
           span.admin-role(v-else) {{ entity.access?.level === 'moderator' ? 'Модератор' : entity.role === 'admin' ? 'Администратор' : 'Участник' }}
           .admin-row-actions
@@ -89,7 +104,7 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
             NButton(secondary circle type="error" :aria-label="`Удалить ${titleOf(entity)}`" :disabled="resource === 'users' && entity.id === auth.user?.id" @click="remove(entity)")
               template(#icon)
                 Icon(name="trash")
-      EmptyState(v-else title="Записей пока нет" :description="resource === 'users' ? 'Участники появляются после первого входа через Telegram. Попробуйте изменить условия поиска.' : 'Создайте первую запись или измените условия поиска.'" icon="layers")
+      EmptyState(v-else :title="resource === 'users' ? 'Участники не найдены' : 'Записей пока нет'" :description="resource === 'users' ? 'Измените запрос или снимите часть фильтров.' : 'Создайте первую запись или измените условия поиска.'" icon="layers")
     Pagination(v-if="!error && meta.pages > 1" :page="page" :pages="meta.pages" @change="setPage")
     EntityEditorModal(v-model:show="editorOpen" :resource="resource" :entity="selected" @saved="refresh")
     ConfirmDeleteModal(v-if="selected" v-model:show="deleteOpen" :resource="resource" :id="selected.id" :user="'name' in selected ? selected : undefined" :title="titleOf(selected)" @deleted="refresh")
@@ -103,6 +118,15 @@ watch(resource, () => { ++editRequest; selected.value = null; editorOpen.value =
 .admin-resource { width: 13rem; }
 .admin-search { flex: 1; min-width: 12rem; }
 .admin-sort { width: 12rem; }
+.member-filters { margin: 0; padding: .75rem 1rem 1rem; min-width: 0; border: 1px solid var(--border); border-radius: .75rem; }
+.member-filters legend { padding: 0 .3rem; font-size: .87rem; font-weight: 700; }
+.filter-buttons, .filter-summary { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.member-filter, .filter-reset { font: inherit; font-size: .8rem; cursor: pointer; }
+.member-filter { padding: .5rem .85rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); color: inherit; }
+.member-filter:hover, .member-filter[aria-pressed="true"] { border-color: var(--accent); }
+.member-filter[aria-pressed="true"] { background: var(--accent); color: #171815; }
+.filter-summary { margin-top: .75rem; color: var(--muted); font-size: .78rem; }
+.filter-reset { margin-left: auto; padding: .3rem; border: 0; background: none; color: var(--accent); }
 .admin-table-wrap { border: 1px solid var(--border, #2c2d2f); border-radius: .75rem; overflow: hidden; background: var(--surface, #191a1c); }
 .admin-table-head { display: flex; justify-content: space-between; padding: 1rem 1.25rem; background: #ffffff03; color: #a6a6aa; font-size: .8rem; }
 .admin-row { display: flex; gap: 1.25rem; align-items: center; padding: 1.25rem; border-top: 1px solid #ffffff0b; }
