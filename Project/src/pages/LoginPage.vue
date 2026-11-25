@@ -157,8 +157,7 @@ onUnmounted(() => { disposed = true; controller.abort(); stopPolling(); });
 .login-page
   header.login-topbar
     a.login-brand(href="/" aria-label="КЛАН — главная")
-      svg.login-brand__mark(viewBox="0 0 38 38" aria-hidden="true")
-        path(d="M3 31 18 5h7L10 31zm17-11 5-9 10 20H24z" fill="currentColor")
+      img.login-brand__mark(src="@/assets/klan-logo.jpg" width="40" height="40" alt="")
       span КЛАН
     span.login-topbar__label Закрытое сообщество
   main.login-main
@@ -266,7 +265,7 @@ onUnmounted(() => { disposed = true; controller.abort(); stopPolling(); });
 .login-topbar, .login-footer { position: relative; max-width: 75rem; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
 .login-topbar { height: 6rem; border-bottom: 1px solid #ffffff0b; }
 .login-brand { display: flex; align-items: center; gap: .7rem; color: #eceee7; text-decoration: none; font-size: 1.7rem; font-weight: 900; letter-spacing: .075em; }
-.login-brand__mark { width: 2.5rem; height: 2.5rem; color: #ee8732; }
+.login-brand__mark { width: 2.5rem; height: 2.5rem; border-radius: .45rem; }
 .login-topbar__label { font-size: .63rem; color: #7c8378; letter-spacing: .06em; text-transform: uppercase; }
 .login-main { position: relative; max-width: 67rem; margin: 0 auto; padding: 2rem 0 3rem; display: grid; gap: 2rem; }
 .login-story { position: relative; padding: 1rem 0 0; }

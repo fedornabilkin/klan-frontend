@@ -50,9 +50,7 @@ async function logout() {
   button.mobile-backdrop(v-if="menuOpen" aria-label="Закрыть меню" @click="menuOpen = false")
   aside.sidebar(:class="{ 'is-open': menuOpen }")
     RouterLink.brand(to="/" @click="menuOpen = false" aria-label="Klan — главная")
-      .brand-mark
-        svg(viewBox="0 0 40 40" fill="none" aria-hidden="true")
-          path(d="M8 7V33M12 21L28 7H36L22 20L36 33H27L12 21Z" fill="currentColor")
+      img.brand-mark(src="@/assets/klan-logo.jpg" width="42" height="42" alt="")
       .brand-word KLAN
         span ЛЮДИ. ДЕЛО. ХАРАКТЕР.
     .sidebar-inner
