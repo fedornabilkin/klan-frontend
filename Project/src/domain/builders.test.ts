@@ -8,6 +8,12 @@ const user = {
   tags: [{ id: 't1', name: 'Походы' }], stats: { events: 3, challenges: 1, books: 2 }, joinedAt: '2026-01-01',
 };
 describe('DTO → Builder → Domain', () => {
+  it('keeps missing publication metadata empty for legacy records', () => {
+    const record = new EntityBuilder().from({id:'legacy-book', type:'books', title:'Книга'}).build();
+    expect(record.status).toBe('');
+    expect(record.createdAt).toBe('');
+    expect(record.author).toBeUndefined();
+  });
   it('accepts personal vote totals and keeps likes unavailable on older entities', () => {
     const ticket = { id:'ticket', type:'feedback', title:'Предложение' };
     const build = (extra: object) => new EntityBuilder().from({...ticket,...extra}).build();

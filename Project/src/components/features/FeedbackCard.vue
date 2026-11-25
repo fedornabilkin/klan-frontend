@@ -1,57 +1,36 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import type { Entity } from '@shared/contracts';
-import { communityService } from '@/services/community';
-import { errorMessage } from '@/services/api';
-import { useAuthStore } from '@/stores/auth';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import EntityLikeButton from './EntityLikeButton.vue';
-import FeedbackStatusButtons from './FeedbackStatusButtons.vue';
+import FeedbackStatusActions from './FeedbackStatusActions.vue';
 import { categoryLabels } from './resourceMeta';
 
-const props = defineProps<{ entity: Entity; preview?: boolean }>();
+const props = defineProps<{ entity: Entity }>();
 const emit = defineEmits<{ statusChanged: [id: string, status: string] }>();
-const auth = useAuthStore();
-const busy = ref(false);
-const error = ref('');
 const createdLabel = computed(() => {
   const time = Date.parse(props.entity.createdAt);
   return Number.isFinite(time) ? new Date(time).toLocaleString('ru-RU', {dateStyle: 'long', timeStyle: 'short'}) : '';
 });
-async function changeStatus(status: string) {
-  if (!auth.isAdmin || busy.value || status === props.entity.status) return;
-  busy.value = true;
-  error.value = '';
-  const id = props.entity.id;
-  try {
-    const saved = await communityService.setFeedbackStatus(id, status);
-    emit('statusChanged', id, saved);
-  } catch (cause) { error.value = errorMessage(cause); }
-  finally { busy.value = false; }
-}
 </script>
 
 <template lang="pug">
-article.feedback-card(:class="preview ? 'resource-card feedback-preview' : 'detail-panel'")
+article.feedback-card.resource-card.feedback-preview
   .feedback-top
     EntityLikeButton(v-if="entity.likes" :entity="entity" :summary="entity.likes")
     StatusBadge(:status="entity.status")
-  h3(v-if="preview")
+  h3
     RouterLink.card-title-link(:to="`/feedback/${entity.publicId ?? entity.id}`") {{ entity.title }}
-  h2(v-else) Подробности
   p.description(v-if="entity.description") {{ entity.description }}
-  p.description(v-if="!preview && entity.content") {{ entity.content }}
   .feedback-tags(v-if="entity.tags.length")
-    span(v-for="tag in (preview ? entity.tags.slice(0, 3) : entity.tags)" :key="tag.id") {{ tag.name }}
+    span(v-for="tag in entity.tags.slice(0, 3)" :key="tag.id") {{ tag.name }}
   footer
     .feedback-meta
-      span(v-if="preview && entity.category") {{ categoryLabels[entity.category] || entity.category }}
-      span(v-if="!preview") Создана · ваше время
+      span(v-if="entity.category") {{ categoryLabels[entity.category] || entity.category }}
       time(v-if="createdLabel" :datetime="entity.createdAt") {{ createdLabel }}
       span(v-else) Дата не указана
-    FeedbackStatusButtons(v-if="auth.isAdmin" :status="entity.status" :busy="busy" @select="changeStatus")
-    small(v-if="error" role="alert") {{ error }}
+    FeedbackStatusActions(:entity="entity" @status-changed="(id, status) => emit('statusChanged', id, status)")
 </template>
 
 <style scoped>
@@ -71,6 +50,4 @@ article.feedback-card(:class="preview ? 'resource-card feedback-preview' : 'deta
 .feedback-tags span { padding: .22rem .5rem; border-radius: .3rem; background: #282626; color: #c2b9b4; font-size: .7rem; }
 footer { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .65rem 1rem; margin-top: auto; padding-top: .85rem; border-top: 1px solid var(--border); }
 .feedback-meta { display: grid; gap: .2rem; color: var(--muted); font-size: .76rem; }
-footer :deep(.feedback-status-buttons) { margin-inline-start: auto; justify-content: flex-end; }
-footer small { flex-basis: 100%; text-align: end; color: #f2a19b; }
 </style>

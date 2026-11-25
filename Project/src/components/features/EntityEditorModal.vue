@@ -14,7 +14,7 @@ import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{ show: boolean; resource: Resource; entity?: Entity | User | null }>()
-const emit = defineEmits<{ 'update:show': [boolean]; saved: [] }>()
+const emit = defineEmits<{ 'update:show': [boolean]; saved: [record: Entity | User] }>()
 const auth = useAuthStore()
 const busy = ref(false)
 const error = ref('')
@@ -74,7 +74,7 @@ watch(() => props.show, async show => {
   coordinatesLocked.value = !!user?.location.city && user.location.lat != null && user.location.lng != null
   form.value = {
     title: item?.title ?? user?.name ?? '', description: item?.description ?? user?.bio ?? '', content: item?.content ?? '',
-    status: item?.status ?? (props.resource === 'feedback' ? 'open' : 'active'), category: item?.category ?? ({ events: 'offline', challenges: 'count', rules: 'general' } as Partial<Record<Resource, string>>)[props.resource] ?? '',
+    status: item?.status ?? ({feedback:'open', books:'published'} as Partial<Record<Resource,string>>)[props.resource] ?? 'active', category: item?.category ?? ({ events: 'offline', challenges: 'count', rules: 'general' } as Partial<Record<Resource, string>>)[props.resource] ?? '',
     clanJoinedOn: user?.clanJoinedOn ?? '',
     location: { city: entity?.location?.city ?? '', country: entity?.location?.country ?? '', lat: entity?.location?.lat ?? null, lng: entity?.location?.lng ?? null },
     callsign: user?.callsign ?? '', username: user?.username ?? '', usernameChangeComment: '',
@@ -150,17 +150,17 @@ async function save() {
   busy.value = true
   try {
     const result = props.entity
-      ? await api.patch<ApiResponse<unknown>>(`/${isUser.value ? 'admin/users' : props.resource}/${encodeURIComponent(props.entity.id)}`, payload)
-      : await api.post<ApiResponse<unknown>>(`/${props.resource}`, payload)
+      ? await api.patch<ApiResponse<Entity | User>>(`/${isUser.value ? 'admin/users' : props.resource}/${encodeURIComponent(props.entity.id)}`, payload)
+      : await api.post<ApiResponse<Entity | User>>(`/${props.resource}`, payload)
     if (isUser.value && props.entity?.id === auth.user?.id) await auth.restore(true)
-    emit('saved'); emit('update:show', false)
+    emit('saved', result.data); emit('update:show', false)
   } catch (e) { error.value = e instanceof Error ? e.message : 'Не удалось сохранить запись.' }
   finally { busy.value = false }
 }
 </script>
 
 <template lang="pug">
-NModal(:show="show" preset="card" :title="entity ? 'Редактировать запись' : 'Новая запись'" class="entity-editor-modal" :style="{ width: 'min(42rem, calc(100vw - 2rem))' }" :mask-closable="!busy" :closable="!busy" :close-on-esc="!busy" @update:show="emit('update:show', $event)")
+NModal(:show="show" preset="card" :title="entity ? 'Редактировать запись' : resource === 'books' ? 'Добавить книгу' : 'Новая запись'" class="entity-editor-modal" :style="{ width: 'min(42rem, calc(100vw - 2rem))' }" :mask-closable="!busy" :closable="!busy" :close-on-esc="!busy" @update:show="emit('update:show', $event)")
   form.editor-form(@submit.prevent="save")
     NAlert(v-if="error" type="error" :show-icon="false") {{ error }}
     NFormItem(:label="isUser ? 'Имя и фамилия' : 'Название'" required)

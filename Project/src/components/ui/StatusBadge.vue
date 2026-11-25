@@ -6,7 +6,7 @@ const label = computed(() => statusLabel(props.status));
 </script>
 
 <template lang="pug">
-span.status-badge(:class="`status-badge--${status}`")
+span.status-badge(v-if="status" :class="`status-badge--${status}`")
   span.status-badge__dot
   | {{ label }}
 </template>

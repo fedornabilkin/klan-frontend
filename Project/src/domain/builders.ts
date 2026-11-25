@@ -218,7 +218,7 @@ export class EntityBuilder {
     }
     return new CommunityEntity({
       id: string(dto.id, 'entity.id'), publicId: publicId(dto.publicId, 'entity.publicId'), participantCount: dto.participantCount == null ? undefined : number(dto.participantCount, 'participantCount'), teamCount: dto.teamCount == null ? undefined : number(dto.teamCount, 'teamCount'), readerCount: dto.readerCount == null ? undefined : number(dto.readerCount, 'readerCount'), type: type as Entity['type'], title: string(dto.title, 'entity.title'),
-      description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', 'active'),
+      description: string(dto.description, 'entity.description', ''), status: string(dto.status, 'entity.status', ''),
       category: string(dto.category, 'entity.category', ''), tags: array(dto.tags, buildTag, 'entity.tags'),
       createdAt: string(dto.createdAt, 'entity.createdAt', ''),
       likes: dto.likes == null ? undefined : buildLikeSummary(dto.likes),

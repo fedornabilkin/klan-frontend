@@ -13,8 +13,9 @@ import { useRealtime } from '@/composables/useRealtime';
 import { detailBreadcrumb } from '@/composables/useDetailBreadcrumb';
 import UserAvatar from '@/components/ui/UserAvatar.vue';
 import Icon from '@/components/ui/Icon.vue';
-import EntityTitle from '@/components/ui/EntityTitle.vue';
-import FeedbackCard from '@/components/features/FeedbackCard.vue';
+import DetailCard from '@/components/features/DetailCard.vue';
+import EntityLikeButton from '@/components/features/EntityLikeButton.vue';
+import FeedbackStatusActions from '@/components/features/FeedbackStatusActions.vue';
 import ChallengeMetric from '@/components/ui/ChallengeMetric.vue';
 import ProfileTextEditor from '@/components/features/ProfileTextEditor.vue';
 import ProfileIdentityEditor from '@/components/features/ProfileIdentityEditor.vue';
@@ -128,16 +129,16 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
     p {{ error }}
     NButton(@click="load") Повторить
   template(v-else-if="record && resource === 'users'")
-    header.detail-heading
-      .profile-title
-        .profile-eyebrow
-          span.admin-mark(v-if="user.role === 'admin'") АДМИН
-          RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" data-tooltip="Ссылка на профиль") ID {{ user.publicId }}
-        ProfileIdentityEditor(:key="`identity-${user.id}`" :user="user" :editable="isOwn" @saved="profileIdentitySaved")
-        ProfileLocationEditor(:key="`location-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'location')")
     .detail-columns
       .detail-main
-        section.detail-panel
+        DetailCard
+          template(#title)
+            .profile-title
+              ProfileIdentityEditor(:key="`identity-${user.id}`" :user="user" :editable="isOwn" @saved="profileIdentitySaved")
+              .profile-eyebrow
+                span.admin-mark(v-if="user.role === 'admin'") АДМИН
+                RouterLink.profile-id(v-if="user.publicId" :to="userPath(user)" data-tooltip="Ссылка на профиль") ID {{ user.publicId }}
+          ProfileLocationEditor(:key="`location-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'location')")
           ProfileTextEditor(:key="`bio-${user.id}`" :user="user" field="bio" :editable="isOwn" @saved="profileSaved($event, 'bio')")
         ProfileTagsSection(:key="`tags-${user.id}`" :user="user" :editable="isOwn" @saved="profileSaved($event, 'tags')")
         ProfileEntriesSection.detail-panel(v-if="isOwn || user.facts.length" :key="`facts-${user.id}`" :user="user" field="facts" title="Несколько фактов" icon="check" :editable="isOwn" @saved="profileSaved($event, 'facts')")
@@ -173,22 +174,14 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
           p Сохраните профиль или перенесите информацию из JSON.
           RouterLink(to="/profile/import") Импорт и экспорт
   template(v-else-if="record")
-    header.detail-heading
-      .entity-title
-        .profile-eyebrow {{ [resourceMeta[resource].singular, categoryLabels[entity.category] || entity.category].filter(Boolean).join(' · ') }}
-        EntityTitle(:title="entity.title" :status="entity.status === 'active' && ended ? 'completed' : entity.status")
-        p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
-      NButton(v-if="canEdit" secondary @click="showEditor = true")
-        template(#icon)
-          Icon(name="pen")
-        | Редактировать
     .action-error(v-if="actionError" role="alert") {{ actionError }}
     .detail-columns
       .detail-main
-        FeedbackCard(v-if="resource === 'feedback'" :key="entity.id" :entity="entity" @status-changed="feedbackStatusChanged")
-        section.detail-panel(v-else)
+        DetailCard(:key="entity.id" :entity="entity" :status="entity.status === 'active' && ended ? 'completed' : entity.status")
+          template(v-if="entity.likes" #leading)
+            EntityLikeButton(:entity="entity" :summary="entity.likes")
           .details-heading
-            h2 {{ resource === 'books' ? 'О книге' : resource === 'teams' ? 'О команде' : 'Подробности' }}
+            span.profile-eyebrow {{ [resourceMeta[resource].singular, categoryLabels[entity.category] || entity.category].filter(Boolean).join(' · ') }}
             span.challenge-participation(v-if="['teams', 'events'].includes(resource) && participant")
               Icon(name="circle-check")
               | Вы участвуете
@@ -196,11 +189,18 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
             span.challenge-participation(v-else-if="resource === 'challenges' && participant" tabindex="0" :data-tooltip="participant.team ? 'Вы участвуете за ' + participant.team.title : 'Вы участвуете лично'")
               Icon(name="circle-check")
               | Участвую
-          p.prose {{ entity.description }}
+          p.entity-motto(v-if="entity.motto") «{{ entity.motto }}»
+          p.prose(v-if="entity.description") {{ entity.description }}
           p.prose(v-if="entity.content") {{ entity.content }}
           .profile-tags(v-if="entity.tags.length")
             span(v-for="tag in entity.tags" :key="tag.id") {{ tag.name }}
           TeamChallengeProgress(v-if="resource === 'teams'" :key="entity.id" :active="entity.activeTeamChallenges" :finished="entity.teamChallenges")
+          template(v-if="canEdit" #actions)
+            NButton(secondary size="small" @click="showEditor = true")
+              template(#icon)
+                Icon(name="pen")
+              | Редактировать
+            FeedbackStatusActions(v-if="resource === 'feedback' && auth.isAdmin" :entity="entity" @status-changed="feedbackStatusChanged")
         template(v-if="resource === 'challenges'")
           section.detail-panel
             .section-heading
@@ -298,10 +298,6 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
             template(#icon)
               Icon(:name="hasRead ? 'check' : 'plus'")
             | {{ hasRead ? 'Прочитано · убрать отметку' : 'Я прочитал эту книгу' }}
-        section.detail-panel(v-if="entity.author")
-          h2 {{ resource === 'feedback' ? 'Автор предложения' : resource === 'events' ? 'Создал мероприятие' : 'Автор' }}
-          UserAvatar.author-link(:user="entity.author")
-            small(v-if="entity.author.role === 'admin'") Администратор
         section.detail-panel.detail-note
           Icon(name="shield-halved")
           p Только для участников KLAN. Берегите доверие и личную информацию друг друга.
@@ -318,13 +314,13 @@ onBeforeUnmount(() => { controller?.abort(); detailBreadcrumb.value = null; });
 
 .team-challenges article{display:grid;gap:.25rem;font-size:.8rem;color:var(--muted);padding:.6rem 0}.team-challenges article+article{border-top:1px solid var(--border)}.team-challenges article a{font-weight:650;color:#edb38a;text-decoration:none}.team-challenges article a:hover{text-decoration:underline}
 .details-heading{display:flex;gap:.6rem;justify-content:space-between;align-items:flex-start;margin-bottom:1rem}
-.detail-panel .details-heading h2{margin:0}
+
 .challenge-participation{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .5rem;border-radius:1rem;background:#233328;color:#b4d8b8;font-size:.69rem;white-space:nowrap}
 
 .profile-team-list{display:flex;flex-direction:column;gap:1rem}.profile-team-card+.profile-team-card{border-top:1px solid #ffffff0a;padding-top:1rem}.profile-team-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap}.profile-team-heading>a{color:#e7b78f;text-decoration:none;font-weight:600;font-size:.95rem;overflow-wrap:anywhere}.profile-team-heading>a:hover{color:#ffd0ab;text-decoration:underline}.profile-team-heading>a:focus-visible{outline:2px solid var(--accent);outline-offset:.2rem;border-radius:.2rem}.profile-team-heading>span{font-size:.72rem;color:#aa998b;white-space:nowrap}.profile-team-card>p{font-size:.82rem;color:#b4aca6;line-height:1.8;margin:.6rem 0 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:pre-line}.profile-teams .profile-team-empty{color:#93877e;font-size:.8rem;line-height:1.7;margin:0}.profile-team-card>.profile-team-empty{margin-top:.5rem}
 .detail-refresh-error{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap;border:1px solid #755d33;background:#2b251b;border-radius:.6rem;padding:.8rem;margin-bottom:1rem;color:#dcc391;font-size:.78rem}.detail-refresh-error>span{min-width:0;overflow-wrap:anywhere}
 .profile-title{min-width:0;width:100%}.profile-eyebrow{flex-wrap:wrap}.profile-id{font-variant-numeric:tabular-nums;color:#9f948c;white-space:nowrap}
-.detail-page{max-width:78rem;margin:0 auto}.detail-error,.action-error{padding:1.4rem;border:1px solid #753c33;background:#291a17;border-radius:.8rem;color:#e2a89b}.action-error{margin-bottom:1rem;font-size:.85rem}.profile-title h1,.entity-title h1{font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.profile-title p{display:flex;align-items:center;gap:.5rem;margin:0;color:#9f948c;font-size:.8rem}.profile-eyebrow{display:flex;align-items:center;gap:.5rem;font-size:.57rem;letter-spacing:.14em;color:#ae8d72}.admin-mark{border:1px solid #705035;border-radius:.2rem;padding:.15rem .3rem;color:#eaa16a}.detail-columns{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1.2rem;align-items:start}.detail-main,.detail-side{display:flex;flex-direction:column;gap:1.2rem;min-width:0}.detail-panel{border:1px solid #302d29;border-radius:.9rem;padding:1.5rem;background:#1a1919}.detail-panel h2{font-size:1rem;font-weight:650;margin:0 0 1rem;letter-spacing:-.02em;display:flex;align-items:center;gap:.6rem}.detail-panel h2>:deep(svg){font-size:.9rem;color:#d88d52}.prose{white-space:pre-line;color:#b4aca6;line-height:1.9;font-size:.86rem;margin:0 0 1rem;overflow-wrap:anywhere}.prose:last-child{margin-bottom:0}.profile-tags,.interest-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.4rem}.profile-tags>*{font-size:.7rem;background:#36271d;border:1px solid #5c3c25;padding:.4rem .7rem;color:#e8a571;border-radius:.4rem;text-decoration:none}.interest-list{margin-top:0}.interest-list>span{font-size:.78rem;border:1px solid #3e3831;padding:.55rem .75rem;border-radius:.5rem;color:#b8aaa0;background:#24211e}.fact-list{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:.85rem}.fact-list>li{display:flex;align-items:baseline;gap:.7rem;font-size:.84rem;color:#bcb1a8;line-height:1.6}.fact-list>li>:deep(svg){color:#dd9259;font-size:.75rem;flex-shrink:0}.profile-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:1.3rem}.profile-numbers>div{display:flex;flex-direction:column;gap:.25rem}.profile-numbers strong{font-size:1.55rem;color:#f5dbc7;font-weight:600}.profile-numbers span{font-size:.59rem;color:#96877b}.team-history{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:#c4b7ac;font-size:.75rem;padding:.6rem 0}.team-history>span{flex:1}.team-history>:deep(svg){color:#cf8b57}.profile-import>:deep(svg){color:#e49960}.profile-import h3{font-size:.9rem;margin:.8rem 0 .5rem}.profile-import p,.detail-note p{font-size:.73rem;color:#958b83;line-height:1.7}.profile-import>a,.detail-note>a{font-size:.72rem;color:#d08b58;text-decoration:none}.detail-heading{display:flex;align-items:center;gap:1rem;justify-content:space-between;padding:0 0 1.5rem}.entity-motto{margin:.5rem 0 0;color:#bc8c66;font-size:.9rem;font-style:italic}.info-row{display:flex;gap:.85rem;margin-bottom:1.4rem}.info-row>:deep(svg){color:#b98962;font-size:.95rem;margin-top:.2rem}.info-row>div{min-width:0;overflow-wrap:anywhere;display:flex;flex-direction:column;gap:.25rem}.info-row small{font-size:.65rem;color:#8b7e74}.info-row strong{font-size:.8rem;font-weight:500;color:#d4c6ba;line-height:1.5}.info-row span{font-size:.7rem;color:#9b8a7b}.participation-notice{display:flex;gap:.5rem;align-items:center;padding:.7rem;border:1px solid #3e5944;background:#233328;color:#a8c6a9;border-radius:.5rem;font-size:.72rem;line-height:1.5;margin-bottom:1rem}.leave-button{margin-top:.4rem;font-size:.7rem}.join-hint,.closed-notice{font-size:.7rem;color:#94877b;line-height:1.7;margin:1rem 0 0}.closed-notice{padding:.7rem;text-align:center;border:1px solid #443b32;border-radius:.4rem}.participant-list{display:flex;flex-direction:column;gap:.8rem}.participant-row{border-top:1px solid #ffffff09;padding-top:.8rem}.participant-person,.author-link{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:#d1c7be}.participant-person strong,.author-link strong{font-size:.8rem;font-weight:500;display:block}.participant-person small,.author-link small{font-size:.65rem;color:#8f8277;display:block;margin-top:.2rem}.participant-items{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0 2.7rem}.participant-items>span{font-size:.65rem;color:#b8a18d;background:#29231f;padding:.25rem .45rem;border-radius:.3rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.section-heading>h2{margin:0}.section-heading>span{color:#98897d;font-size:.7rem}.challenge-progress{display:flex;align-items:baseline;gap:.5rem;margin-top:.6rem}.challenge-progress strong{font-size:2.4rem;letter-spacing:-.04em;color:#efb183;font-weight:600}.challenge-progress>span{color:#9a8879;font-size:.85rem}.progress-track{height:.45rem;border-radius:1rem;background:#392c22;overflow:hidden;margin-top:.9rem}.progress-track>span{display:block;height:100%;background:linear-gradient(90deg,#d77832,#ffb071);border-radius:1rem;transition:width .4s}.progress-caption{font-size:.7rem;color:#978578;margin-bottom:0}.personal-score{background:linear-gradient(140deg,#34251b,#211c18);border-color:#614026}.personal-score>span{display:block;font-size:.6rem;letter-spacing:.1em;color:#c88f64}.personal-score>strong{display:block;font-size:3rem;line-height:1.5;color:#ffb67e;letter-spacing:-.06em;font-weight:500}.personal-score>small{font-size:.7rem;color:#ba9171}.own-result{display:flex;justify-content:space-between;border-top:1px solid #ffffff0b;margin-top:.7rem;padding-top:.5rem;font-size:.7rem;color:#bda18b}.own-result>b{color:#e0b18a}.empty-inline{color:#8f8177;font-size:.8rem}.readers-button{display:flex;align-items:center;gap:.65rem;font:inherit;width:100%;color:#d3bcaa;background:#29211c;border:1px solid #44342a;border-radius:.5rem;padding:.8rem;margin-bottom:1rem;cursor:pointer}.readers-button:hover{border-color:#98714f}.readers-button strong{font-size:1.35rem;color:#f5b888}.readers-button span{font-size:.72rem}.detail-note>:deep(svg){color:#8b715b}.detail-note p{margin:.7rem 0}.detail-panel .n-button{min-height:2.75rem}@media(max-width:58rem){.detail-columns{grid-template-columns:minmax(0,1fr) 16rem}.detail-panel{padding:1.15rem}}@media(max-width:45rem){.detail-columns{display:flex;flex-direction:column;align-items:stretch}.detail-main{display:contents}.detail-main>:first-child{order:-2}.detail-side{order:-1}.profile-title h1{font-size:1.6rem}.detail-heading{align-items:flex-start;flex-direction:column}.entity-title h1{font-size:1.8rem}.detail-note{display:none}.info-row{margin-bottom:1rem}.detail-side{gap:.8rem}.personal-score>strong{font-size:2.5rem}.detail-main,.detail-columns{gap:.8rem}}
+.detail-page{max-width:78rem;margin:0 auto}.detail-error,.action-error{padding:1.4rem;border:1px solid #753c33;background:#291a17;border-radius:.8rem;color:#e2a89b}.action-error{margin-bottom:1rem;font-size:.85rem}.profile-title h1{font-size:clamp(1.7rem,3.5vw,2.4rem);line-height:1.15;margin:.45rem 0 .6rem;letter-spacing:-.05em;color:#f2efeb}.profile-title p{display:flex;align-items:center;gap:.5rem;margin:0;color:#9f948c;font-size:.8rem}.profile-eyebrow{display:flex;align-items:center;gap:.5rem;font-size:.57rem;letter-spacing:.14em;color:#ae8d72}.admin-mark{border:1px solid #705035;border-radius:.2rem;padding:.15rem .3rem;color:#eaa16a}.detail-columns{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1.2rem;align-items:start}.detail-main,.detail-side{display:flex;flex-direction:column;gap:1.2rem;min-width:0}.detail-panel{border:1px solid #302d29;border-radius:.9rem;padding:1.5rem;background:#1a1919}.detail-panel h2{font-size:1rem;font-weight:650;margin:0 0 1rem;letter-spacing:-.02em;display:flex;align-items:center;gap:.6rem}.detail-panel h2>:deep(svg){font-size:.9rem;color:#d88d52}.prose{white-space:pre-line;color:#b4aca6;line-height:1.9;font-size:.86rem;margin:0 0 1rem;overflow-wrap:anywhere}.prose:last-child{margin-bottom:0}.profile-tags,.interest-list{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.4rem}.profile-tags>*{font-size:.7rem;background:#36271d;border:1px solid #5c3c25;padding:.4rem .7rem;color:#e8a571;border-radius:.4rem;text-decoration:none}.interest-list{margin-top:0}.interest-list>span{font-size:.78rem;border:1px solid #3e3831;padding:.55rem .75rem;border-radius:.5rem;color:#b8aaa0;background:#24211e}.fact-list{padding:0;margin:0;list-style:none;display:flex;flex-direction:column;gap:.85rem}.fact-list>li{display:flex;align-items:baseline;gap:.7rem;font-size:.84rem;color:#bcb1a8;line-height:1.6}.fact-list>li>:deep(svg){color:#dd9259;font-size:.75rem;flex-shrink:0}.profile-numbers{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:1.3rem}.profile-numbers>div{display:flex;flex-direction:column;gap:.25rem}.profile-numbers strong{font-size:1.55rem;color:#f5dbc7;font-weight:600}.profile-numbers span{font-size:.59rem;color:#96877b}.team-history{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:#c4b7ac;font-size:.75rem;padding:.6rem 0}.team-history>span{flex:1}.team-history>:deep(svg){color:#cf8b57}.profile-import>:deep(svg){color:#e49960}.profile-import h3{font-size:.9rem;margin:.8rem 0 .5rem}.profile-import p,.detail-note p{font-size:.73rem;color:#958b83;line-height:1.7}.profile-import>a,.detail-note>a{font-size:.72rem;color:#d08b58;text-decoration:none}.entity-motto{margin:.5rem 0 0;color:#bc8c66;font-size:.9rem;font-style:italic}.info-row{display:flex;gap:.85rem;margin-bottom:1.4rem}.info-row>:deep(svg){color:#b98962;font-size:.95rem;margin-top:.2rem}.info-row>div{min-width:0;overflow-wrap:anywhere;display:flex;flex-direction:column;gap:.25rem}.info-row small{font-size:.65rem;color:#8b7e74}.info-row strong{font-size:.8rem;font-weight:500;color:#d4c6ba;line-height:1.5}.info-row span{font-size:.7rem;color:#9b8a7b}.participation-notice{display:flex;gap:.5rem;align-items:center;padding:.7rem;border:1px solid #3e5944;background:#233328;color:#a8c6a9;border-radius:.5rem;font-size:.72rem;line-height:1.5;margin-bottom:1rem}.leave-button{margin-top:.4rem;font-size:.7rem}.join-hint,.closed-notice{font-size:.7rem;color:#94877b;line-height:1.7;margin:1rem 0 0}.closed-notice{padding:.7rem;text-align:center;border:1px solid #443b32;border-radius:.4rem}.participant-list{display:flex;flex-direction:column;gap:.8rem}.participant-row{border-top:1px solid #ffffff09;padding-top:.8rem}.participant-person{display:flex;align-items:center;gap:.7rem;text-decoration:none;color:#d1c7be}.participant-person strong{font-size:.8rem;font-weight:500;display:block}.participant-person small{font-size:.65rem;color:#8f8277;display:block;margin-top:.2rem}.participant-items{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0 2.7rem}.participant-items>span{font-size:.65rem;color:#b8a18d;background:#29231f;padding:.25rem .45rem;border-radius:.3rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.section-heading>h2{margin:0}.section-heading>span{color:#98897d;font-size:.7rem}.challenge-progress{display:flex;align-items:baseline;gap:.5rem;margin-top:.6rem}.challenge-progress strong{font-size:2.4rem;letter-spacing:-.04em;color:#efb183;font-weight:600}.challenge-progress>span{color:#9a8879;font-size:.85rem}.progress-track{height:.45rem;border-radius:1rem;background:#392c22;overflow:hidden;margin-top:.9rem}.progress-track>span{display:block;height:100%;background:linear-gradient(90deg,#d77832,#ffb071);border-radius:1rem;transition:width .4s}.progress-caption{font-size:.7rem;color:#978578;margin-bottom:0}.personal-score{background:linear-gradient(140deg,#34251b,#211c18);border-color:#614026}.personal-score>span{display:block;font-size:.6rem;letter-spacing:.1em;color:#c88f64}.personal-score>strong{display:block;font-size:3rem;line-height:1.5;color:#ffb67e;letter-spacing:-.06em;font-weight:500}.personal-score>small{font-size:.7rem;color:#ba9171}.own-result{display:flex;justify-content:space-between;border-top:1px solid #ffffff0b;margin-top:.7rem;padding-top:.5rem;font-size:.7rem;color:#bda18b}.own-result>b{color:#e0b18a}.empty-inline{color:#8f8177;font-size:.8rem}.readers-button{display:flex;align-items:center;gap:.65rem;font:inherit;width:100%;color:#d3bcaa;background:#29211c;border:1px solid #44342a;border-radius:.5rem;padding:.8rem;margin-bottom:1rem;cursor:pointer}.readers-button:hover{border-color:#98714f}.readers-button strong{font-size:1.35rem;color:#f5b888}.readers-button span{font-size:.72rem}.detail-note>:deep(svg){color:#8b715b}.detail-note p{margin:.7rem 0}.detail-panel .n-button{min-height:2.75rem}@media(max-width:58rem){.detail-columns{grid-template-columns:minmax(0,1fr) 16rem}.detail-panel{padding:1.15rem}}@media(max-width:45rem){.detail-columns{display:flex;flex-direction:column;align-items:stretch}.detail-main{display:contents}.detail-main>:first-child{order:-2}.detail-side{order:-1}.profile-title h1{font-size:1.6rem}.detail-note{display:none}.info-row{margin-bottom:1rem}.detail-side{gap:.8rem}.personal-score>strong{font-size:2.5rem}.detail-main,.detail-columns{gap:.8rem}}
 .attendance-comment{margin:.35rem 0;color:var(--text);font-size:.85rem;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NButton, NInput, NSelect, NSkeleton } from 'naive-ui';
-import type { Resource } from '@shared/contracts';
+import type { Entity, Resource, User } from '@shared/contracts';
 import { formatTagFilter, parseTagFilter } from '@shared/tag-names';
 import { canonicalTagNames } from '@/domain/tagPopularity';
 import { useList } from '@/composables/useList';
@@ -25,6 +25,12 @@ const { items, loading, error, filters, page, refresh, setPage } = list;
 const pagination = list.meta;
 const { ranked: tags, counts: tagCounts, loading: tagsLoading, error: tagsError, refresh: refreshTags } = useCommunityTags(() => ['users','events','challenges','books'].includes(resource.value));
 const showEditor = ref(false);
+const addedBook = ref<Pick<Entity,'id'|'publicId'|'title'>>();
+watch(resource, () => { showEditor.value = false; addedBook.value = undefined; });
+function created(item: Entity | User) {
+  if (resource.value === 'books' && 'type' in item && item.type === 'books') addedBook.value = item;
+  void refresh();
+}
 const sortOptions = computed(() => [{ label: 'Сначала новые', value: '-createdAt' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · А—Я`, value: 'name' }, { label: `${resource.value === 'users' ? 'По имени' : 'По названию'} · Я—А`, value: '-name' }]);
 const statuses = computed(() => resource.value === 'feedback' ? [{label:'Все статусы',value:''},{label:'Новые',value:'open'},{label:'В работе',value:'in_progress'},{label:'Решённые',value:'resolved'},{label:'Закрытые',value:'closed'}] : resource.value === 'teams' ? [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Архив',value:'archived'}] : [{label:'Все статусы',value:''},{label:'Активные',value:'active'},{label:'Скоро',value:'upcoming'},{label:'Завершённые',value:'completed'},{label:'Архив',value:'archived'}]);
 const selectedTags = computed({ get: () => parseTagFilter(filters.tag), set: (value: string[]) => { filters.tag = formatTagFilter(value); } });
@@ -49,14 +55,17 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
 .feature-page
   .list-page-heading
     PageHeader(:title="meta.title" :description="meta.description")
-    NButton(v-if="resource === 'feedback'" type="primary" @click="showEditor = true")
+    NButton(v-if="resource === 'feedback' || resource === 'books'" type="primary" @click="showEditor = true")
       template(#icon)
         Icon(name="plus")
-      | Предложить идею
+      | {{ resource === 'books' ? 'Добавить книгу' : 'Предложить идею' }}
     .collection-tools(v-else-if="resource === 'users'")
       .collection-count {{ pagination.total }} в сообществе
       NSelect.list-select(v-model:value="filters.sort" :options="sortOptions" aria-label="Сортировка")
     .collection-count(v-else) {{ pagination.total }} в сообществе
+  p.book-added(v-if="addedBook && resource === 'books'" role="status")
+    span Книга добавлена.
+    RouterLink(:to="`/books/${addedBook.publicId ?? addedBook.id}`") {{ addedBook.title }}
   CommunityTagFilter.member-tag-filter(v-if="resource === 'users'" v-model="selectedTags" v-model:query="filters.q" :tags="tags" :loading="tagsLoading" :error="tagsError" @retry="refreshTags")
   .list-toolbar(v-else)
     NInput.list-search(v-model:value="filters.q" clearable placeholder="Поиск от 3 символов…" aria-label="Поиск")
@@ -81,7 +90,7 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
     NSkeleton(v-for="n in 6" :key="n" height="17rem" style="border-radius:1rem")
   .resource-grid(v-else-if="items.length")
     template(v-for="item in items" :key="item.id")
-      FeedbackCard(v-if="'type' in item && item.type === 'feedback'" :entity="item" preview @status-changed="feedbackStatusChanged")
+      FeedbackCard(v-if="'type' in item && item.type === 'feedback'" :entity="item" @status-changed="feedbackStatusChanged")
       ResourceCard(v-else :item="item" :resource="resource" :tag-counts="tagCounts")
   .list-empty(v-else)
     EmptyState(title="Ничего не нашлось" description="Попробуйте другое слово или уберите часть фильтров." icon="magnifying-glass")
@@ -89,10 +98,12 @@ function clearFilters() { filters.q=''; filters.tag=''; filters.status=''; filte
   .list-pagination(v-if="!loading && pagination.total")
     span Показано {{ (page - 1) * pagination.limit + 1 }}–{{ Math.min(page * pagination.limit, pagination.total) }} из {{ pagination.total }}
     Pagination(:page="page" :pages="pagination.pages" @change="setPage")
-  EntityEditorModal(v-if="resource === 'feedback'" v-model:show="showEditor" resource="feedback" @saved="refresh")
+  EntityEditorModal(v-if="resource === 'feedback' || resource === 'books'" :key="resource" v-model:show="showEditor" :resource="resource" @saved="created")
 </template>
 
 <style scoped>
+.book-added { padding: .7rem 1rem; border: 1px solid var(--border); border-radius: .6rem; }
+.book-added a { margin-inline-start: .35em; color: var(--accent); }
 .collection-tools{display:flex;align-items:center;flex-wrap:wrap;gap:.7rem}
 .member-tag-filter{margin-bottom:1.4rem;max-width:100%}
 .active-location{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .65rem;background:#34271d;border:1px solid #63442b;border-radius:.5rem;color:#dfa371;font-size:.75rem;margin-bottom:1rem}.active-location>button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:.2rem;display:flex}
